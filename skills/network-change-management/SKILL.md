@@ -99,7 +99,7 @@ Config-only audit (no pending change): `python3 $S/cfg_audit.py <file.cfg> --mgm
   the mechanism, then the blocks. The user's approval is on the *content*, so the
   plan must be readable without decoding CLI jargon.
 - **A successful apply is not the end.** Block 4's verification command is a
-  promise; skipping it because `ntn config` printed `STATUS: SUKSES` is the
+  promise; skipping it because `ntn config` printed `STATUS: SUCCESS` is the
   failure mode this gate exists to stop.
 - **Gate and audit verdicts are separate.** With `--change`, pre-existing config findings print as context but change neither the verdict nor the exit code — a pre-existing plaintext password must not block an unrelated interface edit. Harden it separately.
 - **Mikrotik rollbacks are placeholders.** RouterOS has no `no` form; `rollback_gen.py` emits `remove [find]  # TODO: narrow the find`. Narrow it to the exact object before use.

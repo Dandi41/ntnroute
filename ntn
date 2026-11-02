@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # ============================================================
-# ntn — engine NTnRoute.AI untuk Hermes Agent
-# Inventaris device jaringan persisten (~/.ntnroute/devices.json)
-# + eksekusi SSH via OpenSSH (flag legacy crypto otomatis).
-# Dua mode sesi:
-#   PTY  (ssh -tt + plan berjeda) -> Cisco/Huawei/Aruba/Ruijie/Arista/Juniper
-#   EXEC (ssh -T, stdin pipe)     -> Mikrotik RouterOS
-# Semua output teks biasa. Error diawali "ERROR:" dan exit 1.
+# ntn — NTnRoute.AI device engine for Hermes Agent
+# Persistent network device inventory (~/.ntnroute/devices.json)
+# + SSH execution via OpenSSH (legacy crypto flags automatic).
+# Two session modes:
+#   PTY  (ssh -tt + paced plan) -> Cisco/Huawei/Aruba/Ruijie/Arista/Juniper
+#   EXEC (ssh -T, stdin pipe)   -> MikroTik RouterOS
+# All output is plain text. Errors start with "ERROR:" and exit 1.
 # ============================================================
 set -o pipefail
 
@@ -31,39 +31,39 @@ SSH_OPTS=(
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 umask 077
-command -v jq  >/dev/null 2>&1 || die "jq tidak ditemukan"
-command -v ssh >/dev/null 2>&1 || die "ssh tidak ditemukan"
+command -v jq  >/dev/null 2>&1 || die "jq not found"
+command -v ssh >/dev/null 2>&1 || die "ssh not found"
 
 mkdir -p "$BACKUP_DIR"
 [ -f "$DB" ] || { echo '{"devices":[],"checkpoints":[],"audit":[],"next_id":1}' > "$DB"; chmod 600 "$DB"; }
 if command -v flock >/dev/null 2>&1; then exec 9>"$LOCK_FILE"; flock 9; fi
 
-# ---------- helper JSON ----------
-db_write() { # filter [jq-args...] ; tulis atomik
+# ---------- JSON helpers ----------
+db_write() { # filter [jq-args...] ; atomic write
   local filter=$1; shift
   local tmp err
-  tmp=$(mktemp "$TMPBASE/ntn.db.XXXXXX") || die "mktemp gagal"
+  tmp=$(mktemp "$TMPBASE/ntn.db.XXXXXX") || die "mktemp failed"
   err=$(mktemp "$TMPBASE/ntn.err.XXXXXX")
   if jq "$filter" "$@" "$DB" > "$tmp" 2>"$err"; then
     mv "$tmp" "$DB"; chmod 600 "$DB"; rm -f "$err"
   else
-    cat "$err" >&2; rm -f "$tmp" "$err"; die "gagal menulis database (filter jq)"
+    cat "$err" >&2; rm -f "$tmp" "$err"; die "failed to write database (jq filter)"
   fi
 }
 
 audit() { db_write '.audit = (.audit + [{ts:(now|todate), action:$a, detail:$d}])[-500:]' --arg a "$1" --arg d "$2"; }
 
-resolve_ref() { # ref = nomor-tampil | id | ip | hostname -> cetak id
+resolve_ref() { # ref = display-number | id | ip | hostname -> print id
   jq -r --arg ref "$1" '[.devices[] | select((.id|tostring)==$ref or .ip==$ref or ((.hostname|ascii_downcase)==($ref|ascii_downcase)))] | .[0].id // empty' "$DB"
 }
 
-resolve_number() { # nomor urut tampilan (1-based) ATAU id -> cetak id
+resolve_number() { # display row number (1-based) OR id -> print id
   jq -r --arg r "$1" '.devices | to_entries[] | select(((.key+1)|tostring)==$r or (.value.id|tostring)==$r) | .value.id' "$DB" | head -1
 }
 
 device_by_id() { jq --argjson id "$1" '.devices[] | select(.id==$id)' "$DB"; }
 
-# ---------- perbedaan brand ----------
+# ---------- brand differences ----------
 norm_brand() { case "${1,,}" in cisco) echo Cisco;; huawei) echo Huawei;; aruba) echo Aruba;; arista) echo Arista;; ruijie) echo Ruijie;; juniper) echo Juniper;; mikrotik) echo Mikrotik;; *) echo "${1^}";; esac; }
 norm_type()  { case "${1,,}" in router) echo Router;; switch) echo Switch;; olt) echo OLT;; firewall) echo Firewall;; ap|accesspoint|access-point) echo AP;; *) echo "${1^}";; esac; }
 
@@ -75,21 +75,21 @@ config_enter() { case "$1" in Juniper) echo configure;; Mikrotik) :;; *) echo "c
 config_leave() { case "$1" in Juniper) echo "exit configuration";; Mikrotik) :;; *) echo end;; esac; }
 save_lines()   { case "$1" in Huawei) echo save; echo Y;; Juniper) echo commit;; Mikrotik) :;; *) echo "write memory";; esac; }
 
-config_cmd_show() { # perintah ambil config penuh
+config_cmd_show() { # full config pull command
   case "$1" in
     Mikrotik) echo "/export";;
     Huawei)   echo "display current-configuration";;
     *)        echo "show running-config";;
   esac
 }
-hostname_cmd_show() { # perintah ambil hostname
+hostname_cmd_show() { # hostname pull command
   case "$1" in
     Mikrotik) echo "/system identity print";;
     *)        echo "show running-config | include hostname";;
   esac
 }
 
-# pola error per brand (dipakai grep -E)
+# per-brand error patterns (used with grep -E)
 err_pattern() {
   case "$1" in
     Mikrotik) echo '^(invalid value|no such item|syntax error|expected |bad command|ambiguous|failure:|script error|\s+error:)';;
@@ -98,12 +98,12 @@ err_pattern() {
   esac
 }
 
-# ---------- mesin sesi SSH: mode PTY (interactive CLI) ----------
-# plan file: baris "delay<TAB>perintah" (perintah boleh kosong = hanya tunggu)
+# ---------- SSH session engine: PTY mode (interactive CLI) ----------
+# plan file: lines "delay<TAB>command" (empty command = just wait)
 run_session() { # ip port user pass plan_file out_file timeout_s
   local ip=$1 port=$2 user=$3 pass=$4 plan=$5 out=$6 tmo=$7
   local work rc
-  work=$(mktemp -d "$TMPBASE/ntn.ssh.XXXXXX") || die "mktemp gagal"
+  work=$(mktemp -d "$TMPBASE/ntn.ssh.XXXXXX") || die "mktemp failed"
   printf '#!/bin/bash\nprintf "%%s\\n" "$NTN_PW"\n' > "$work/askpass.sh"
   chmod 700 "$work/askpass.sh"
   (
@@ -120,13 +120,13 @@ run_session() { # ip port user pass plan_file out_file timeout_s
   return "$rc"
 }
 
-# ---------- mesin sesi SSH: mode EXEC (Mikrotik RouterOS) ----------
-# RouterOS menjalankan perintah dari stdin pada saat login (exec channel).
-# Jauh lebih andal daripada mode interaktif: tidak ada banner/paging/prepare.
+# ---------- SSH session engine: EXEC mode (MikroTik RouterOS) ----------
+# RouterOS runs commands from stdin at login (exec channel).
+# Far more reliable than interactive mode: no banner/paging/preparation.
 run_exec_mode() { # ip port user pass commands_file out_file timeout_s
   local ip=$1 port=$2 user=$3 pass=$4 cmds=$5 out=$6 tmo=$7
   local work rc
-  work=$(mktemp -d "$TMPBASE/ntn.ssh.XXXXXX") || die "mktemp gagal"
+  work=$(mktemp -d "$TMPBASE/ntn.ssh.XXXXXX") || die "mktemp failed"
   printf '#!/bin/bash\nprintf "%%s\\n" "$NTN_PW"\n' > "$work/askpass.sh"
   chmod 700 "$work/askpass.sh"
   NTN_PW="$pass" SSH_ASKPASS="$work/askpass.sh" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 \
@@ -140,8 +140,8 @@ run_exec_mode() { # ip port user pass commands_file out_file timeout_s
 
 plan_timeout() { awk -F'\t' '{s+=$1} END{printf "%d", s+30}' "$1"; }
 
-# ambil output satu perintah dari transkrip PTY: antara baris echo perintah dan prompt berikutnya
-extract_cmd_output() { # transkrip perintah
+# extract one command's output from a PTY transcript: between the command echo and the next prompt
+extract_cmd_output() { # command transcript
   awk -v cmd="$2" '
     BEGIN { L=length(cmd) }
     !found {
@@ -170,8 +170,8 @@ build_exec_plan() { # brand secret plan_file cmd...
   printf '2\t\n' >> "$plan"
 }
 
-# ---------- ambil config / hostname (sadar-mode) ----------
-pull_config() { # ip port user pass secret brand out_file -> exit code; out berisi config saja
+# ---------- config / hostname pull (mode-aware) ----------
+pull_config() { # ip port user pass secret brand out_file -> exit code; out contains config only
   local ip=$1 port=$2 user=$3 pass=$4 secret=$5 brand=$6 out=$7
   local rc
   if is_exec_brand "$brand"; then
@@ -195,7 +195,7 @@ pull_config() { # ip port user pass secret brand out_file -> exit code; out beri
   return $rc
 }
 
-pull_hostname() { # ip port user pass secret brand -> stdout hostname ('' bila gagal)
+pull_hostname() { # ip port user pass secret brand -> stdout hostname ('' on failure)
   local ip=$1 port=$2 user=$3 pass=$4 secret=$5 brand=$6
   local out; out=$(mktemp "$TMPBASE/ntn.hn.XXXXXX")
   local hn=""
@@ -216,17 +216,17 @@ pull_hostname() { # ip port user pass secret brand -> stdout hostname ('' bila g
   printf '%s' "$hn"
 }
 
-# ---------- perintah: list / show / add / remove ----------
+# ---------- commands: list / show / add / remove ----------
 cmd_list() {
   local n; n=$(jq '.devices|length' "$DB")
-  if [ "$n" -eq 0 ]; then echo "(belum ada device — tambah dengan: ntn add <IP> <Port> <Username> <Password> <Type> <Brand> [Secret])"; return 0; fi
-  echo "Daftar device ($n):"
-  jq -r '.devices | to_entries[] | "\(.key+1). [id \(.value.id)] \(.value.hostname) — \(.value.ip):\(.value.port) (\(.value.brand) \(.value.type)) | sync terakhir: \(.value.last_sync // "-")"' "$DB"
+  if [ "$n" -eq 0 ]; then echo "(no devices yet — add one with: ntn add <IP> <Port> <Username> <Password> <Type> <Brand> [Secret])"; return 0; fi
+  echo "Devices ($n):"
+  jq -r '.devices | to_entries[] | "\(.key+1). [id \(.value.id)] \(.value.hostname) — \(.value.ip):\(.value.port) (\(.value.brand) \(.value.type)) | last sync: \(.value.last_sync // "-")"' "$DB"
 }
 
 cmd_show() {
   [ $# -ge 1 ] || die "usage: ntn show <ref> [--reveal]"
-  local id; id=$(resolve_ref "$1"); [ -n "$id" ] || die "device tidak ditemukan: $1"
+  local id; id=$(resolve_ref "$1"); [ -n "$id" ] || die "device not found: $1"
   local reveal=0; [ "${2:-}" = "--reveal" ] && reveal=1
   device_by_id "$id" | jq -r --argjson reveal "$reveal" '
     "hostname   : " + .hostname,
@@ -238,21 +238,21 @@ cmd_show() {
     "secret     : " + (if .secret=="" then "(none)" elif $reveal==1 then .secret else "****" end),
     "added_at   : " + (.added_at // "-"),
     "last_sync  : " + (.last_sync // "-"),
-    "check_point: " + (if .check_point=="" then "(kosong)" else ((.check_point|split("\n")|length)|tostring) + " baris" end),
+    "check_point: " + (if .check_point=="" then "(empty)" else ((.check_point|split("\n")|length)|tostring) + " lines" end),
     "--- config_list ---",
-    (.config_list // "(kosong)")'
+    (.config_list // "(empty)")'
 }
 
 cmd_add() {
-  [ $# -ge 6 ] || die "format: ntn add <IP> <Port> <Username> <Password> <Type> <Brand> [Secret]"
+  [ $# -ge 6 ] || die "usage: ntn add <IP> <Port> <Username> <Password> <Type> <Brand> [Secret]"
   local ip=$1 port=$2 user=$3 pass=$4 type=$5 brand=$6 secret=${7:-}
-  [[ $ip =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] || die "IP tidak valid: $ip"
-  [[ $port =~ ^[0-9]+$ ]] || die "port harus angka: $port"
+  [[ $ip =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] || die "invalid IP: $ip"
+  [[ $port =~ ^[0-9]+$ ]] || die "port must be a number: $port"
   brand=$(norm_brand "$brand"); type=$(norm_type "$type")
   local dup; dup=$(jq -r --arg ip "$ip" '.devices[] | select(.ip==$ip) | .id' "$DB")
-  [ -z "$dup" ] || die "IP $ip sudah terdaftar (id $dup). Hapus dulu: ntn remove <nomor>"
+  [ -z "$dup" ] || die "IP $ip already registered (id $dup). Remove it first: ntn remove <number>"
 
-  echo "Menguji koneksi SSH ke $ip:$port (user $user, $brand $type) ..."
+  echo "Testing SSH connection to $ip:$port (user $user, $brand $type) ..."
   local cfgfile probe rc
   cfgfile=$(mktemp "$TMPBASE/ntn.cfg.XXXXXX")
   probe=$(mktemp "$TMPBASE/ntn.probe.XXXXXX")
@@ -260,14 +260,14 @@ cmd_add() {
   rc=$?
   if [ $rc -ne 0 ] || auth_failed "$probe"; then
     grep -E "Permission denied|no matching|refused|timed out|No route" "$probe" | head -3 >&2
-    rm -f "$cfgfile" "$probe"; audit "add-failed" "$ip (auth/koneksi gagal)"
-    die "koneksi/auth gagal (exit $rc). Device TIDAK disimpan."
+    rm -f "$cfgfile" "$probe"; audit "add-failed" "$ip (auth/connection failed)"
+    die "connection/auth failed (exit $rc). Device NOT saved."
   fi
   mv "$probe" "$cfgfile"
   if [ ! -s "$cfgfile" ]; then
     rm -f "$cfgfile"
-    audit "add-failed" "$ip (config kosong)"
-    die "config device kosong — device TIDAK disimpan."
+    audit "add-failed" "$ip (empty config)"
+    die "device config is empty — device NOT saved."
   fi
 
   local hostname; hostname=$(pull_hostname "$ip" "$port" "$user" "$pass" "$secret" "$brand")
@@ -280,33 +280,33 @@ cmd_add() {
         --arg brand "$brand" --arg type "$type" --rawfile cfg "$cfgfile" \
         '{id:$id, hostname:$hostname, ip:$ip, port:$port, username:$username, password:$password,
           secret:$secret, brand:$brand, type:$type, config_list:$cfg, check_point:"",
-          added_at:(now|todate), last_sync:(now|todate)}') || { rm -f "$cfgfile"; die "gagal membuat entri device"; }
+          added_at:(now|todate), last_sync:(now|todate)}') || { rm -f "$cfgfile"; die "failed to create device entry"; }
   local bk; bk="$BACKUP_DIR/${hostname}-$(date +%Y%m%d-%H%M%S)-added.cfg"
   cp "$cfgfile" "$bk"
   db_write '.devices += [$d] | .next_id += 1' --argjson d "$dev"
   rm -f "$cfgfile"
   audit "add" "$hostname ($ip) $brand $type"
-  echo "OK: device ditambahkan"
+  echo "OK: device added"
   echo "  id       : $id"
   echo "  hostname : $hostname"
   echo "  ip:port  : $ip:$port"
   echo "  brand    : $brand $type"
-  echo "  config   : $(wc -l < "$bk") baris di config_list (salinan: $bk)"
+  echo "  config   : $(wc -l < "$bk") lines in config_list (copy: $bk)"
 }
 
 cmd_remove() {
-  [ $# -ge 1 ] || die "usage: ntn remove <nomor-urut|id>  (lihat daftar: ntn list)"
-  local id; id=$(resolve_number "$1"); [ -n "$id" ] || die "tidak ada device nomor/id $1"
+  [ $# -ge 1 ] || die "usage: ntn remove <number|id>  (see list: ntn list)"
+  local id; id=$(resolve_number "$1"); [ -n "$id" ] || die "no device with number/id $1"
   local label; label=$(device_by_id "$id" | jq -r '.hostname + " (" + .ip + ")"')
   db_write '.devices = [.devices[] | select(.id != $id)]' --argjson id "$id"
   audit "remove" "$label"
-  echo "OK: device dihapus → $label"
+  echo "OK: device removed → $label"
 }
 
-# ---------- perintah: ping / exec / sync ----------
+# ---------- commands: ping / exec / sync ----------
 cmd_ping() {
   [ $# -ge 1 ] || die "usage: ntn ping <ref>"
-  local id; id=$(resolve_ref "$1"); [ -n "$id" ] || die "device tidak ditemukan: $1"
+  local id; id=$(resolve_ref "$1"); [ -n "$id" ] || die "device not found: $1"
   local ip; ip=$(device_by_id "$id" | jq -r '.ip')
   ping -c 3 -W 2 "$ip" 2>&1 | tail -2
 }
@@ -331,8 +331,8 @@ run_device_commands() { # ip port user pass secret brand out_file timeout cmd...
 }
 
 cmd_exec() {
-  [ $# -ge 2 ] || die "usage: ntn exec <ref> <perintah> [perintah2 ...]"
-  local id; id=$(resolve_ref "$1"); [ -n "$id" ] || die "device tidak ditemukan: $1"
+  [ $# -ge 2 ] || die "usage: ntn exec <ref> <cmd> [cmd2 ...]"
+  local id; id=$(resolve_ref "$1"); [ -n "$id" ] || die "device not found: $1"
   shift
   local dev ip port user pass secret brand out rc
   dev=$(device_by_id "$id")
@@ -344,11 +344,11 @@ cmd_exec() {
   rc=$?
   if [ $rc -ne 0 ] || auth_failed "$out"; then
     grep -E "Permission denied|no matching|refused|timed out|No route" "$out" | head -3 >&2
-    rm -f "$out"; die "eksekusi gagal (exit $rc)"
+    rm -f "$out"; die "execution failed (exit $rc)"
   fi
   cat "$out"
   local lines; lines=$(wc -l < "$out")
-  if [ "$lines" -gt 400 ]; then echo "... (transkrip $lines baris; output penuh: $out)"; else rm -f "$out"; fi
+  if [ "$lines" -gt 400 ]; then echo "... (transcript $lines lines; full output: $out)"; else rm -f "$out"; fi
   return 0
 }
 
@@ -364,9 +364,9 @@ sync_one() { # id
   pull_config "$ip" "$port" "$user" "$pass" "$secret" "$brand" "$cfgfile"
   rc=$?
   if [ $rc -ne 0 ] || auth_failed "$cfgfile"; then
-    rm -f "$cfgfile"; echo "GAGAL sync $hostname ($ip): koneksi/auth"; audit "sync-failed" "$hostname ($ip)"; return 1
+    rm -f "$cfgfile"; echo "FAILED sync $hostname ($ip): connection/auth"; audit "sync-failed" "$hostname ($ip)"; return 1
   fi
-  if [ ! -s "$cfgfile" ]; then rm -f "$cfgfile"; echo "GAGAL sync $hostname: output config kosong"; audit "sync-failed" "$hostname ($ip)"; return 1; fi
+  if [ ! -s "$cfgfile" ]; then rm -f "$cfgfile"; echo "FAILED sync $hostname: empty config output"; audit "sync-failed" "$hostname ($ip)"; return 1; fi
   cp "$cfgfile" "$BACKUP_DIR/${hostname}-$(date +%Y%m%d-%H%M%S).cfg"
   db_write '(.devices[] | select(.id==$id)).config_list = $cfg
             | (.devices[] | select(.id==$id)).last_sync = (now|todate)' \
@@ -381,24 +381,24 @@ cmd_sync() {
   if [ "$1" = "all" ]; then
     local ids id ok=0 fail=0
     ids=$(jq -r '.devices[].id' "$DB")
-    [ -n "$ids" ] || { echo "(belum ada device)"; return 0; }
+    [ -n "$ids" ] || { echo "(no devices yet)"; return 0; }
     for id in $ids; do if sync_one "$id"; then ok=$((ok+1)); else fail=$((fail+1)); fi; done
-    echo "Selesai: $ok sukses, $fail gagal"
+    echo "Done: $ok succeeded, $fail failed"
   else
-    local id; id=$(resolve_ref "$1"); [ -n "$id" ] || die "device tidak ditemukan: $1"
+    local id; id=$(resolve_ref "$1"); [ -n "$id" ] || die "device not found: $1"
     sync_one "$id"
   fi
 }
 
-# ---------- normalisasi script Mikrotik ----------
-# RouterOS exec-mode (ssh -T) TIDAK mempertahankan konteks antar baris:
+# ---------- MikroTik script normalization ----------
+# RouterOS exec-mode (ssh -T) does NOT keep context between lines:
 #   /interface ethernet
 #   set [ find ... ] comment=X
-# baris pertama jalan sendiri, baris kedua jadi "set ..." tanpa path -> syntax error.
-# Solusinya: gabungkan baris menu-path (/xxx) ke perintah berikutnya jadi satu baris.
-mt_normalize() { # in_file out_file -> cetak jumlah perintah efektif
+# the first line runs alone, the second becomes "set ..." without a path -> syntax error.
+# Fix: merge a menu-path line (/xxx) into the next command as one line.
+mt_normalize() { # in_file out_file -> print count of effective commands
   local line path="" n=0 tok is_path
-  # kata kerja RouterOS: kalau ada di baris, baris itu perintah lengkap, bukan path
+  # RouterOS verbs: if one appears in the line, the line is a full command, not a path
   local verbs=" add set remove print export import enable disable find get unset move reset edit check run send ping traceroute reboot shutdown save load backup restore monitor comment export "
   : > "$2"
   while IFS= read -r line || [ -n "$line" ]; do
@@ -408,7 +408,7 @@ mt_normalize() { # in_file out_file -> cetak jumlah perintah efektif
     case "$line" in
       /*)
         is_path=1
-        # ada '=' atau '[' -> jelas perintah lengkap
+        # contains '=' or '[' -> clearly a full command
         case "$line" in *=*|*'['*) is_path=0;; esac
         if [ "$is_path" -eq 1 ]; then
           for tok in $line; do
@@ -433,28 +433,28 @@ mt_normalize() { # in_file out_file -> cetak jumlah perintah efektif
   printf '%s' "$n"
 }
 
-# ---------- verifikasi post-check ----------
+# ---------- post-check verification ----------
 MISSING=(); UNCHECKED=()
 
-# Mikrotik: /export menata ulang argumen (urutan & baris lipat berubah),
-# jadi cocokkan tiap token key=value terhadap export yang spasi/backslash-nya dibuang.
+# MikroTik: /export reorders arguments (order and line folding change),
+# so match each key=value token against the export with spaces/backslashes stripped.
 verify_mikrotik() { # newcfg script
   local newcfg=$1 script=$2
-  # flatten: buang spasi, newline, backslash, dan tanda kutip di kedua sisi
+  # flatten: strip spaces, newlines, backslashes, and quotes from both sides
   local flat; flat=$(tr -d ' \t\r\n\\"' < "$newcfg")
   local line word tok checked destructive
   while IFS= read -r line || [ -n "$line" ]; do
     line="${line%$'\r'}"
     case "$line" in ''|'#'*) continue;; esac
-    # Perintah destruktif (remove/unset/disable/reset) menghapus objeknya sendiri,
-    # jadi token di dalamnya justru HARUS tidak ada di export. Verifikasi terbalik
-    # tidak bisa diotomatiskan di sini -> masukkan UNCHECKED, jangan MISSING.
+    # Destructive commands (remove/unset/disable/reset) remove their own object,
+    # so their tokens must NOT appear in the export. Reverse verification
+    # cannot be automated here -> record UNCHECKED, not MISSING.
     destructive=0
     case " $line " in
       *" remove "*|*" unset "*|*" disable "*|*" reset "*) destructive=1;;
     esac
     if [ "$destructive" -eq 1 ]; then
-      UNCHECKED+=("$line (perintah destruktif — cek manual)")
+      UNCHECKED+=("$line (destructive command — check manually)")
       continue
     fi
     checked=0
@@ -463,10 +463,10 @@ verify_mikrotik() { # newcfg script
         *=*)
           tok="${word//\"/}"
           checked=$((checked+1))
-          # RouterOS menghilangkan nilai kosong dari /export (mis. comment=""),
-          # jadi token bernilai kosong tidak bisa diverifikasi -> catat UNCHECKED saja.
+          # RouterOS drops empty values from /export (e.g. comment=""),
+          # so empty-value tokens cannot be verified -> record UNCHECKED only.
           case "$tok" in
-            *=) UNCHECKED+=("$line :: $tok (nilai kosong tidak muncul di export)");;
+            *=) UNCHECKED+=("$line :: $tok (empty value absent from export)");;
             *)  case "$flat" in *"$tok"*) ;; *) MISSING+=("$line :: token $tok");; esac;;
           esac
           ;;
@@ -476,7 +476,7 @@ verify_mikrotik() { # newcfg script
   done < "$script"
 }
 
-# Brand lain: cocokkan baris dinormalisasi persis.
+# Other brands: match the normalized line exactly.
 verify_exact() { # newcfg script
   local newcfg=$1 script=$2
   local normfile; normfile=$(mktemp "$TMPBASE/ntn.norm.XXXXXX")
@@ -496,9 +496,9 @@ verify_exact() { # newcfg script
 }
 
 # ---------- apply config ----------
-apply_config() { # id script_file reason -> 0 sukses
+apply_config() { # id script_file reason -> 0 on success
   local id=$1 script=$2 reason=$3
-  [ -s "$script" ] || die "file script kosong atau tidak ada: $script"
+  [ -s "$script" ] || die "script file is empty or missing: $script"
   local dev ip port user pass secret brand hostname
   dev=$(device_by_id "$id")
   ip=$(jq -r '.ip' <<<"$dev");      port=$(jq -r '.port' <<<"$dev")
@@ -507,19 +507,19 @@ apply_config() { # id script_file reason -> 0 sukses
   hostname=$(jq -r '.hostname' <<<"$dev")
   local ts; ts=$(date +%Y%m%d-%H%M%S)
 
-  # 1) snapshot pre-change (wajib; abort bila gagal)
+  # 1) pre-change snapshot (mandatory; abort on failure)
   local precfg="$BACKUP_DIR/${hostname}-${ts}-pre.cfg"
   pull_config "$ip" "$port" "$user" "$pass" "$secret" "$brand" "$precfg" || true
   if [ ! -s "$precfg" ] || auth_failed "$precfg"; then
     rm -f "$precfg"
-    die "gagal mengambil config sebelum perubahan (abort demi keamanan)"
+    die "failed to pull pre-change config (aborting for safety)"
   fi
   echo "Snapshot pre-change: $precfg"
 
   # 2) apply
   local out rc nlines eff_script
   out=$(mktemp "$TMPBASE/ntn.out.XXXXXX")
-  # script efektif: untuk Mikrotik dinormalisasi jadi path-penuh satu-baris
+  # effective script: for MikroTik, normalized into full-path one-liners
   eff_script=$(mktemp "$TMPBASE/ntn.eff.XXXXXX")
   if is_exec_brand "$brand"; then
     nlines=$(mt_normalize "$script" "$eff_script")
@@ -530,7 +530,7 @@ apply_config() { # id script_file reason -> 0 sukses
   if is_exec_brand "$brand"; then
     local cfile; cfile=$(mktemp "$TMPBASE/ntn.cmd.XXXXXX")
     cp "$eff_script" "$cfile"
-    echo "Menerapkan $nlines perintah via exec-mode RouterOS ..."
+    echo "Applying $nlines commands via RouterOS exec-mode ..."
     run_exec_mode "$ip" "$port" "$user" "$pass" "$cfile" "$out" 120
     rc=$?
     rm -f "$cfile"
@@ -553,30 +553,30 @@ apply_config() { # id script_file reason -> 0 sukses
       if [ -n "$secret" ]; then printf '2\texit\n'; fi
       printf '2\t\n'
     } > "$plan"
-    echo "Menerapkan script ($(grep -cve '^\s*$' -e '^!' "$script") baris efektif) via CLI interaktif ..."
+    echo "Applying script ($(grep -cve '^\s*$' -e '^!' "$script") effective lines) via interactive CLI ..."
     run_session "$ip" "$port" "$user" "$pass" "$plan" "$out" "$(plan_timeout "$plan")"
     rc=$?
     rm -f "$plan"
   fi
 
   if auth_failed "$out"; then
-    rm -f "$out"; audit "config-failed" "$hostname ($ip): sesi putus / auth gagal"
-    die "sesi putus atau auth gagal saat apply. Periksa device manual; pre-config ada di $precfg"
+    rm -f "$out"; audit "config-failed" "$hostname ($ip): session dropped / auth failed"
+    die "session dropped or auth failed during apply. Check the device manually; pre-change config saved at $precfg"
   fi
-  # exit != 0 pada mode exec RouterOS berarti perintah ditolak (syntax/invalid value),
-  # bukan sesi putus — lanjut ke deteksi error di bawah supaya pesannya akurat.
+  # exit != 0 in RouterOS exec-mode means a command was rejected (syntax/invalid value),
+  # not a dropped session — fall through to error detection below so the message is accurate.
   if [ $rc -ne 0 ] && ! is_exec_brand "$brand"; then
-    rm -f "$out"; audit "config-failed" "$hostname ($ip): sesi putus saat apply (exit $rc)"
-    die "sesi putus saat apply (exit $rc). Periksa device manual; pre-config ada di $precfg"
+    rm -f "$out"; audit "config-failed" "$hostname ($ip): session dropped during apply (exit $rc)"
+    die "session dropped during apply (exit $rc). Check the device manually; pre-change config saved at $precfg"
   fi
   local errors
   errors=$(grep -E "$(err_pattern "$brand")" "$out" | head -10)
   if [ -z "$errors" ] && [ $rc -ne 0 ] && is_exec_brand "$brand"; then
-    # RouterOS kadang hanya mencetak satu baris error tanpa prefix yang dikenal
+    # RouterOS sometimes prints a single error line without a known prefix
     errors=$(grep -vE '^\s*$' "$out" | head -5)
   fi
 
-  # 3) post-check: tarik config baru, verifikasi isi script ada
+  # 3) post-check: pull the new config, verify the script contents are present
   local newcfg="$BACKUP_DIR/${hostname}-${ts}-post.cfg"
   pull_config "$ip" "$port" "$user" "$pass" "$secret" "$brand" "$newcfg" || true
 
@@ -584,11 +584,11 @@ apply_config() { # id script_file reason -> 0 sukses
   if is_exec_brand "$brand"; then verify_mikrotik "$newcfg" "$eff_script"; else verify_exact "$newcfg" "$script"; fi
   rm -f "$eff_script"
 
-  echo "--- hasil eksekusi ---"
-  if [ -n "$errors" ]; then echo "Error dari device:"; echo "$errors"; else echo "Error dari device: tidak ada"; fi
-  echo "Baris tidak terverifikasi di config baru: ${#MISSING[@]}"
+  echo "--- execution result ---"
+  if [ -n "$errors" ]; then echo "Device errors:"; echo "$errors"; else echo "Device errors: none"; fi
+  echo "Lines not found in new config: ${#MISSING[@]}"
   [ ${#MISSING[@]} -gt 0 ] && printf '  - %s\n' "${MISSING[@]}"
-  echo "Baris perlu cek manual (heuristik): ${#UNCHECKED[@]}"
+  echo "Lines needing manual check (heuristic): ${#UNCHECKED[@]}"
   if [ ${#UNCHECKED[@]} -gt 0 ] && [ ${#UNCHECKED[@]} -le 5 ]; then printf '  - %s\n' "${UNCHECKED[@]}"; fi
 
   if [ -z "$errors" ] && [ ${#MISSING[@]} -eq 0 ] && [ -s "$newcfg" ]; then
@@ -596,11 +596,11 @@ apply_config() { # id script_file reason -> 0 sukses
               | (.devices[] | select(.id==$id)).last_sync = (now|todate)' \
              --argjson id "$id" --rawfile cfg "$newcfg"
     audit "config-ok" "$hostname ($ip): $reason"
-    echo "STATUS: SUKSES — config_list diperbarui"
+    echo "STATUS: SUCCESS — config_list updated"
     return 0
   else
     audit "config-failed" "$hostname ($ip): $reason"
-    echo "STATUS: GAGAL — config_list TIDAK diubah. Pre-config: $precfg"
+    echo "STATUS: FAILED — config_list NOT changed. Pre-change config: $precfg"
     return 1
   fi
 }
@@ -612,18 +612,18 @@ cmd_config() {
       --script) script=$2; shift 2;;
       --rollback) rollback=$2; shift 2;;
       --reason) reason=$2; shift 2;;
-      *) [ -z "$ref" ] && ref=$1 || die "argumen tak dikenal: $1"; shift;;
+      *) [ -z "$ref" ] && ref=$1 || die "unknown argument: $1"; shift;;
     esac
   done
-  [ -n "$ref" ] && [ -n "$script" ] || die "usage: ntn config <ref> --script <file> [--rollback <file>] [--reason <teks>]"
-  [ -n "$reason" ] || reason="(tanpa keterangan)"
-  local id; id=$(resolve_ref "$ref"); [ -n "$id" ] || die "device tidak ditemukan: $ref"
+  [ -n "$ref" ] && [ -n "$script" ] || die "usage: ntn config <ref> --script <file> [--rollback <file>] [--reason <text>]"
+  [ -n "$reason" ] || reason="(no reason given)"
+  local id; id=$(resolve_ref "$ref"); [ -n "$id" ] || die "device not found: $ref"
   local hostname; hostname=$(device_by_id "$id" | jq -r '.hostname')
   local ts; ts=$(date +%Y%m%d-%H%M%S)
   local rbfile="$BACKUP_DIR/${hostname}-${ts}-rollback.cmd"
 
   if [ -n "$rollback" ]; then
-    [ -s "$rollback" ] || die "file rollback tidak ada/kosong: $rollback"
+    [ -s "$rollback" ] || die "rollback file missing/empty: $rollback"
     cp "$rollback" "$rbfile"
   else
     : > "$rbfile"
@@ -636,42 +636,42 @@ cmd_config() {
     db_write '.checkpoints = (.checkpoints + [{ts:(now|todate), hostname:$h, reason:$r, rollback_file:$f}])[-200:]' \
              --arg h "$hostname" --arg r "$reason" --arg f "$rbfile"
     if [ -n "$rollback" ]; then
-      echo "Script rollback disimpan → kolom check_point + $rbfile"
+      echo "Rollback script saved → check_point column + $rbfile"
     else
-      echo "PERHATIAN: tidak ada script rollback; hanya snapshot pre-change di backups/"
+      echo "WARNING: no rollback script; only the pre-change snapshot in backups/"
     fi
   else
-    die "penerapan gagal — perbaiki script lalu coba lagi, atau pulihkan manual dari $precfg"
+    die "apply failed — fix the script and retry, or restore manually from the pre-change snapshot in $BACKUP_DIR"
   fi
 }
 
 cmd_rollback() {
   [ $# -ge 1 ] || die "usage: ntn rollback <ref>"
-  local id; id=$(resolve_ref "$1"); [ -n "$id" ] || die "device tidak ditemukan: $1"
+  local id; id=$(resolve_ref "$1"); [ -n "$id" ] || die "device not found: $1"
   local rb hostname
   rb=$(device_by_id "$id" | jq -r '.check_point')
   hostname=$(device_by_id "$id" | jq -r '.hostname')
-  [ -n "$rb" ] || die "check_point kosong untuk $hostname — tidak ada yang bisa di-rollback"
+  [ -n "$rb" ] || die "check_point empty for $hostname — nothing to roll back"
   local rbtmp; rbtmp=$(mktemp "$TMPBASE/ntn.rb.XXXXXX")
   printf '%s\n' "$rb" > "$rbtmp"
-  echo "Menjalankan rollback untuk $hostname ..."
+  echo "Running rollback for $hostname ..."
   if apply_config "$id" "$rbtmp" "ROLLBACK"; then
     db_write '(.devices[] | select(.id==$id)).check_point = ""' --argjson id "$id"
     audit "rollback" "$hostname"
-    echo "STATUS: ROLLBACK SUKSES — check_point dikosongkan"
+    echo "STATUS: ROLLBACK SUCCESS — check_point cleared"
   else
     rm -f "$rbtmp"
-    die "rollback gagal — periksa manual; snapshot ada di $BACKUP_DIR"
+    die "rollback failed — check manually; snapshots are in $BACKUP_DIR"
   fi
   rm -f "$rbtmp"
 }
 
 cmd_checkpoints() {
   [ $# -ge 1 ] || die "usage: ntn checkpoints <ref>"
-  local id; id=$(resolve_ref "$1"); [ -n "$id" ] || die "device tidak ditemukan: $1"
+  local id; id=$(resolve_ref "$1"); [ -n "$id" ] || die "device not found: $1"
   local hostname; hostname=$(device_by_id "$id" | jq -r '.hostname')
   local n; n=$(jq --arg h "$hostname" '[.checkpoints[] | select(.hostname==$h)] | length' "$DB")
-  echo "Riwayat checkpoint $hostname ($n entri, terbaru terakhir):"
+  echo "Checkpoint history for $hostname ($n entries, newest last):"
   jq -r --arg h "$hostname" '[.checkpoints[] | select(.hostname==$h)][-10:][] | "  \(.ts) — \(.reason)\n    rollback file: \(.rollback_file)"' "$DB"
 }
 
@@ -683,23 +683,23 @@ cmd_audit() {
 usage() {
   cat <<'EOF'
 ntn — NTnRoute.AI device engine
-  ntn list                                   daftar device bernomor
+  ntn list                                   numbered device list
   ntn add <IP> <Port> <User> <Pass> <Type> <Brand> [Secret]
-                                             tes koneksi dulu, ambil hostname+config, baru simpan
-  ntn show <ref> [--reveal]                  detail device (ref: nomor|id|ip|hostname)
-  ntn remove <nomor|id>                      hapus device
-  ntn ping <ref>                             tes ICMP 3 paket
-  ntn exec <ref> <cmd> [cmd2 ...]            jalankan perintah CLI (read-only disarankan)
-  ntn sync <ref|all>                         tarik config -> config_list + backup
-  ntn config <ref> --script <file> [--rollback <file>] [--reason <teks>]
-                                             snapshot pre -> apply -> verifikasi -> update DB
-  ntn rollback <ref>                         terapkan script check_point
-  ntn checkpoints <ref>                      riwayat checkpoint
-  ntn audit [N]                              N entri audit terakhir (default 20)
+                                             tests the connection first, pulls hostname+config, then saves
+  ntn show <ref> [--reveal]                  device details (ref: number|id|ip|hostname)
+  ntn remove <number|id>                     remove a device
+  ntn ping <ref>                             ICMP test, 3 packets
+  ntn exec <ref> <cmd> [cmd2 ...]            run CLI commands (read-only recommended)
+  ntn sync <ref|all>                         pull config -> config_list + backup
+  ntn config <ref> --script <file> [--rollback <file>] [--reason <text>]
+                                             pre snapshot -> apply -> verify -> update DB
+  ntn rollback <ref>                         apply the check_point script
+  ntn checkpoints <ref>                      checkpoint history
+  ntn audit [N]                              last N audit entries (default 20)
 
-Brand: Cisco, Huawei, Aruba, Arista, Ruijie, Juniper, Mikrotik.
-Mikrotik -> exec-mode (ssh -T, /export, tanpa write memory).
-Brand lain -> CLI interaktif (ssh -tt) dengan paginasi + save otomatis.
+Brands: Cisco, Huawei, Aruba, Arista, Ruijie, Juniper, Mikrotik.
+Mikrotik -> exec-mode (ssh -T, /export, no write memory).
+Other brands -> interactive CLI (ssh -tt) with paging + automatic save.
 EOF
 }
 
@@ -718,7 +718,7 @@ main() {
     checkpoints) cmd_checkpoints "$@";;
     audit) cmd_audit "$@";;
     help|--help|-h) usage;;
-    *) usage; die "perintah tidak dikenal: $sub";;
+    *) usage; die "unknown command: $sub";;
   esac
 }
 

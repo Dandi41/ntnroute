@@ -27,13 +27,13 @@ Storage: `~/.ntnroute/devices.json` (mode 600). Backups: `~/.ntnroute/backups/`.
 1. **Anti-hallucination.** Never invent IP/interface/VLAN/credential values. Check `ntn list` + `ntn show <ref>` first. Still missing → ask the user specifically before assembling a script. The inventory changes between sessions (devices are added/removed/replaced), so `ntn list` is the single source of truth — do not use old session notes, memory, or the test table in this skill as the list of active devices. The test table below is test history only, not an inventory.
 2. **Read-only first.** `ntn exec <ref> 'show ...'` before proposing any change.
 3. **Approval required — plan first.** Before `ntn config`, show the user: (a) the plan + short reason, (b) the exact config script, (c) the exact rollback script, (d) the post-apply verification command + expected output, (e) the verdict gate. Then stop and wait for an explicit answer. Running `ntn config` without explicit approval is a violation — including when the user asks for the change in the same message or the change is "just one line". If even one line of the script changes after approval, the old approval is void — re-gate and ask again. Details: the `network-change-management` skill, section "Plan approval gate".
-4. **Verify after apply.** `STATUS: SUKSES` from the engine is not final proof — run the verification command promised in the plan via `ntn exec`, quote the device output lines, and compare against what was expected. Mismatch → report as-is; do not re-apply or patch with unplanned changes.
+4. **Verify after apply.** `STATUS: SUCCESS` from the engine is not final proof — run the verification command promised in the plan via `ntn exec`, quote the device output lines, and compare against what was expected. Mismatch → report as-is; do not re-apply or patch with unplanned changes.
 5. **Blast radius.** Never touch the management path/VTY/SSH access-class/default route that the AI itself depends on. Lockout = total failure.
 6. **Surgical.** Only the targeted interface/VLAN/process. No speculative commands. Follow the existing naming conventions.
 7. **Paging.** The engine already inserts `terminal length 0` / `screen-length 0 temporary` / `no page` / `set cli screen-length 0` automatically. Do not add them yourself.
 8. **Checkpoint mandatory.** The `check_point` column + pre/post snapshots in `backups/` are created automatically by the engine. Rollback = `ntn rollback`.
 9. **Save config.** `write memory` / `save`+`Y` / `commit` are appended automatically at the end of a config script.
-10. **Post-check loop.** The engine already verifies that every line of the script appears in the new running-config. On `STATUS: GAGAL`, analyze the device error output, fix the script, retry; total failure → `ntn rollback`.
+10. **Post-check loop.** The engine already verifies that every line of the script appears in the new running-config. On `STATUS: FAILED`, analyze the device error output, fix the script, retry; total failure → `ntn rollback`.
 11. **Honesty.** Report real results from tool output, including failures. No speculation.
 
 ## Commands
