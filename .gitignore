@@ -1,0 +1,11 @@
+# local device inventory & runtime state — NEVER commit these
+devices.json
+backups/
+.lock
+*.tmp
+
+# scratch / working files
+*.cmd
+out*.txt
+__pycache__/
+*.pyc
