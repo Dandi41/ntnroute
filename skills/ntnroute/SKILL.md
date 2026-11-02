@@ -38,6 +38,8 @@ Storage: `~/.ntnroute/devices.json` (mode 600). Backups: `~/.ntnroute/backups/`.
 
 ## Commands
 
+**Menu rule (first contact).** When the user types `ntn` alone, asks "what can ntn do", or wants the command list: run `ntn help`, then present EVERY command from the block below — all 11, each with its arguments and a clear one-line explanation of what it is for, written in the user's language. Never compress the menu into grouped bullets (e.g. "ping / exec / sync — tes & baca"), never drop commands, never replace the menu with a summary. The full menu IS the answer; a short closing question ("mau mulai dari mana?") is fine.
+
 ```
 ntn list                                   # numbered list (id, hostname, ip:port, brand, last_sync)
 ntn add <IP> <Port> <User> <Pass> <Type> <Brand> [Secret]
