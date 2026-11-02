@@ -107,6 +107,12 @@ ntn audit 10            # 直近10操作
 
 Huawei、Aruba、Arista、Ruijie、Juniper のコードパスは存在しますが、実機での検証は**まだ**です — 実験的とみなし、問題はIssuesで報告してください。
 
+## サポート
+
+ntnroute が役に立ったら、作者にレンペル（インドネシアの餅米スナック）を奢ってあげてください 🙂：**[tako.id/Lemper41](https://tako.id/Lemper41)**
+
+[Instagram](https://www.instagram.com/sdandi_41/) と [LinkedIn](https://www.linkedin.com/in/dandi-suryadi-a29276253/) もやっています。
+
 ## ライセンス
 
 [MIT](LICENSE) © Dandi Suryadi

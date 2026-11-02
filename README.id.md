@@ -107,6 +107,12 @@ Terbukti end-to-end di perangkat nyata: Cisco IOS 15.4 dan MikroTik RouterOS 7.1
 
 Jalur kode untuk Huawei, Aruba, Arista, Ruijie, dan Juniper ada tapi **belum** pernah diuji ke perangkat nyata — anggap eksperimental dan laporkan lewat Issues.
 
+## Dukung
+
+Kalau ntnroute membantu pekerjaanmu, kreator boleh dibelikan lemper 🙂: **[tako.id/Lemper41](https://tako.id/Lemper41)**
+
+Temukan saya di [Instagram](https://www.instagram.com/sdandi_41/) dan [LinkedIn](https://www.linkedin.com/in/dandi-suryadi-a29276253/).
+
 ## Lisensi
 
 [MIT](LICENSE) © Dandi Suryadi

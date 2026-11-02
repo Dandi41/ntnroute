@@ -107,6 +107,12 @@ End-to-end an realen Geräten erprobt: Cisco IOS 15.4 und MikroTik RouterOS 7.18
 
 Die Codepfade für Huawei, Aruba, Arista, Ruijie und Juniper existieren, wurden aber **noch** nicht an realer Hardware getestet — als experimentell behandeln und Probleme über Issues melden.
 
+## Unterstützen
+
+Wenn ntnroute dir Zeit spart, kannst du dem Ersteller einen Lemper ausgeben 🙂 — einen indonesischen Klebreis-Snack: **[tako.id/Lemper41](https://tako.id/Lemper41)**
+
+Du findest mich auf [Instagram](https://www.instagram.com/sdandi_41/) und [LinkedIn](https://www.linkedin.com/in/dandi-suryadi-a29276253/).
+
 ## Lizenz
 
 [MIT](LICENSE) © Dandi Suryadi

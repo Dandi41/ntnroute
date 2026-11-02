@@ -107,6 +107,12 @@ Probado de extremo a extremo en dispositivos reales: Cisco IOS 15.4 y MikroTik R
 
 Las rutas de código para Huawei, Aruba, Arista, Ruijie y Juniper existen pero **no** se han probado aún contra hardware real — trátalas como experimentales y reporta problemas en Issues.
 
+## Apoyar
+
+Si ntnroute te ahorra tiempo, puedes invitar al creador a un lemper 🙂 — un bocadillo indonesio de arroz glutinoso: **[tako.id/Lemper41](https://tako.id/Lemper41)**
+
+Encuéntrame en [Instagram](https://www.instagram.com/sdandi_41/) y [LinkedIn](https://www.linkedin.com/in/dandi-suryadi-a29276253/).
+
 ## Licencia
 
 [MIT](LICENSE) © Dandi Suryadi

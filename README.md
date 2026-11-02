@@ -106,6 +106,12 @@ Proven end-to-end against real devices: Cisco IOS 15.4 and MikroTik RouterOS 7.1
 
 The code paths for Huawei, Aruba, Arista, Ruijie and Juniper exist but have **not** been exercised against real hardware yet — treat them as experimental and report issues.
 
+## Support
+
+If ntnroute saves you time, you can buy the creator a lemper 🙂 — an Indonesian sticky-rice snack: **[tako.id/Lemper41](https://tako.id/Lemper41)**
+
+Find me on [Instagram](https://www.instagram.com/sdandi_41/) and [LinkedIn](https://www.linkedin.com/in/dandi-suryadi-a29276253/).
+
 ## License
 
 [MIT](LICENSE) © Dandi Suryadi
