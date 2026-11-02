@@ -2,6 +2,8 @@
 devices.json
 backups/
 .lock
+ntn.bak-*
+mocks/
 *.tmp
 
 # scratch / working files
