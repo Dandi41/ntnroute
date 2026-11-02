@@ -23,8 +23,10 @@ Python stdlib.
 | Vendor | Mode | Ambil config | Simpan |
 |---|---|---|---|
 | Cisco IOS | PTY interaktif | `show running-config` | `write memory` |
-| Huawei | PTY interaktif | `display current-configuration` | `commit` |
-| Aruba / Arista / Ruijie / Juniper | PTY interaktif | setara vendor | save vendor |
+| Huawei VRP | PTY interaktif | `display current-configuration` | `save` + konfirmasi |
+| Aruba / Arista / Ruijie | PTY interaktif | `show running-config` | `write memory` |
+| Juniper Junos | PTY interaktif | `show configuration \| display set` | `commit` (di dalam config mode) |
+| Fortinet FortiGate | PTY interaktif | `show full-configuration` | otomatis (langsung aktif) |
 | MikroTik RouterOS | exec-mode (`ssh -T`) | `/export` | otomatis |
 
 Kripto lawas (image Cisco tua) ditangani: `diffie-hellman-group14-sha1`, `ssh-rsa`, `aes128-cbc`, `hmac-sha1` dinegosiasikan saat perlu.
@@ -80,7 +82,7 @@ Perubahan config selalu: rencana → persetujuan → apply → verifikasi. Skill
 
 ## Status & kejujuran
 
-Terbukti end-to-end di perangkat nyata: Cisco IOS 15.4 dan MikroTik RouterOS 7.18.2 (add/list/show/exec/sync, config + post-check, rollback, perintah destruktif, guard device tak terjangkau, guard error device).
+Terbukti end-to-end di perangkat nyata: Cisco IOS 15.4 dan MikroTik RouterOS 7.18.2 (add/list/show/exec/sync, config + post-check, rollback, perintah destruktif, guard device tak terjangkau, guard error device). Brand lainnya (Huawei VRP, Arista EOS, Aruba AOS-CX, Ruijie RGOS, Juniper Junos, Fortinet FortiGate) diverifikasi dengan cara yang sama terhadap CLI vendor yang diemulasi (harness uji lokal, bukan bagian dari toolkit).
 
 Jalur kode untuk Huawei, Aruba, Arista, Ruijie, dan Juniper ada tapi **belum** pernah diuji ke perangkat nyata — anggap eksperimental dan laporkan lewat Issues.
 

@@ -22,8 +22,10 @@ only the optional audit gates (`cfg_audit.py`, `sec_audit.py`) use stdlib Python
 | Vendor | Mode | Config pull | Save |
 |---|---|---|---|
 | Cisco IOS | interactive PTY | `show running-config` | `write memory` |
-| Huawei | interactive PTY | `display current-configuration` | `commit` |
-| Aruba / Arista / Ruijie / Juniper | interactive PTY | vendor equivalent | vendor save |
+| Huawei VRP | interactive PTY | `display current-configuration` | `save` + confirm |
+| Aruba / Arista / Ruijie | interactive PTY | `show running-config` | `write memory` |
+| Juniper Junos | interactive PTY | `show configuration \| display set` | `commit` (inside config mode) |
+| Fortinet FortiGate | interactive PTY | `show full-configuration` | automatic (applies on input) |
 | MikroTik RouterOS | exec-mode (`ssh -T`) | `/export` | automatic |
 
 Legacy crypto (old Cisco images) is handled: `diffie-hellman-group14-sha1`, `ssh-rsa`, `aes128-cbc`, `hmac-sha1` are negotiated when needed.
@@ -79,7 +81,7 @@ A config change is always: plan → approval → apply → verify. The bundled `
 
 ## Status & honesty
 
-Proven end-to-end against real devices: Cisco IOS 15.4 and MikroTik RouterOS 7.18.2 (add/list/show/exec/sync, config + post-check, rollback, destructive commands, unreachable-device guard, device-error guard).
+Proven end-to-end against real devices: Cisco IOS 15.4 and MikroTik RouterOS 7.18.2 (add/list/show/exec/sync, config + post-check, rollback, destructive commands, unreachable-device guard, device-error guard). The other brands (Huawei VRP, Arista EOS, Aruba AOS-CX, Ruijie RGOS, Juniper Junos, Fortinet FortiGate) are verified the same way against emulated vendor CLIs (local test harness, not part of the toolkit).
 
 The code paths for Huawei, Aruba, Arista, Ruijie and Juniper exist but have **not** been exercised against real hardware yet — treat them as experimental and report issues.
 

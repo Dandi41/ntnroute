@@ -23,8 +23,10 @@ bash + awk; solo las compuertas de auditoría opcionales (`cfg_audit.py`,
 | Fabricante | Modo | Obtener config | Guardar |
 |---|---|---|---|
 | Cisco IOS | PTY interactivo | `show running-config` | `write memory` |
-| Huawei | PTY interactivo | `display current-configuration` | `commit` |
-| Aruba / Arista / Ruijie / Juniper | PTY interactivo | equivalente del fabricante | guardado del fabricante |
+| Huawei VRP | PTY interactivo | `display current-configuration` | `save` + confirmación |
+| Aruba / Arista / Ruijie | PTY interactivo | `show running-config` | `write memory` |
+| Juniper Junos | PTY interactivo | `show configuration \| display set` | `commit` (dentro del modo config) |
+| Fortinet FortiGate | PTY interactivo | `show full-configuration` | automático (se aplica al enviar) |
 | MikroTik RouterOS | modo exec (`ssh -T`) | `/export` | automático |
 
 La criptografía legacy (imágenes Cisco antiguas) está soportada: `diffie-hellman-group14-sha1`, `ssh-rsa`, `aes128-cbc`, `hmac-sha1` se negocian cuando hace falta.
@@ -80,7 +82,7 @@ Un cambio de configuración es siempre: plan → aprobación → aplicar → ver
 
 ## Estado y honestidad
 
-Probado de extremo a extremo en dispositivos reales: Cisco IOS 15.4 y MikroTik RouterOS 7.18.2 (add/list/show/exec/sync, config + post-verificación, rollback, comandos destructivos, guardia de dispositivo inaccesible, guardia de error del dispositivo).
+Probado de extremo a extremo en dispositivos reales: Cisco IOS 15.4 y MikroTik RouterOS 7.18.2 (add/list/show/exec/sync, config + post-verificación, rollback, comandos destructivos, guardia de dispositivo inaccesible, guardia de error del dispositivo). Las demás marcas (Huawei VRP, Arista EOS, Aruba AOS-CX, Ruijie RGOS, Juniper Junos, Fortinet FortiGate) se verificaron igual contra CLIs de fabricante emulados (arnés de pruebas local, no forma parte del toolkit).
 
 Las rutas de código para Huawei, Aruba, Arista, Ruijie y Juniper existen pero **no** se han probado aún contra hardware real — trátalas como experimentales y reporta problemas en Issues.
 

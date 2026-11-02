@@ -23,8 +23,10 @@ Python（標準ライブラリのみ）を使うのは任意の監査ゲート�
 | ベンダー | モード | コンフィグ取得 | 保存 |
 |---|---|---|---|
 | Cisco IOS | 対話型PTY | `show running-config` | `write memory` |
-| Huawei | 対話型PTY | `display current-configuration` | `commit` |
-| Aruba / Arista / Ruijie / Juniper | 対話型PTY | ベンダー同等 | ベンダー保存 |
+| Huawei VRP | 対話型PTY | `display current-configuration` | `save` + 確認 |
+| Aruba / Arista / Ruijie | 対話型PTY | `show running-config` | `write memory` |
+| Juniper Junos | 対話型PTY | `show configuration \| display set` | `commit`（設定モード内で実行） |
+| Fortinet FortiGate | 対話型PTY | `show full-configuration` | 自動（入力時に即反映） |
 | MikroTik RouterOS | execモード（`ssh -T`） | `/export` | 自動 |
 
 レガシー暗号（古いCiscoイメージ）にも対応：`diffie-hellman-group14-sha1`、`ssh-rsa`、`aes128-cbc`、`hmac-sha1` を必要に応じてネゴシエートします。
@@ -80,7 +82,7 @@ ntn audit 10            # 直近10操作
 
 ## ステータスと正直さ
 
-実機でエンドツーエンド検証済み：Cisco IOS 15.4 と MikroTik RouterOS 7.18.2（add/list/show/exec/sync、config + ポストチェック、ロールバック、破壊的コマンド、到達不能デバイスのガード、デバイスエラーのガード）。
+実機でエンドツーエンド検証済み：Cisco IOS 15.4 と MikroTik RouterOS 7.18.2（add/list/show/exec/sync、config + ポストチェック、ロールバック、破壊的コマンド、到達不能デバイスのガード、デバイスエラーのガード）。その他のブランド（Huawei VRP、Arista EOS、Aruba AOS-CX、Ruijie RGOS、Juniper Junos、Fortinet FortiGate）は、エミュレートしたベンダーCLIに対して同じ手順で検証しています（ローカルのテストハーネスで、ツールキットには含まれません）。
 
 Huawei、Aruba、Arista、Ruijie、Juniper のコードパスは存在しますが、実機での検証は**まだ**です — 実験的とみなし、問題はIssuesで報告してください。
 

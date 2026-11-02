@@ -64,27 +64,33 @@ resolve_number() { # display row number (1-based) OR id -> print id
 device_by_id() { jq --argjson id "$1" '.devices[] | select(.id==$id)' "$DB"; }
 
 # ---------- brand differences ----------
-norm_brand() { case "${1,,}" in cisco) echo Cisco;; huawei) echo Huawei;; aruba) echo Aruba;; arista) echo Arista;; ruijie) echo Ruijie;; juniper) echo Juniper;; mikrotik) echo Mikrotik;; *) echo "${1^}";; esac; }
+norm_brand() { case "${1,,}" in cisco) echo Cisco;; huawei) echo Huawei;; aruba) echo Aruba;; arista) echo Arista;; ruijie) echo Ruijie;; juniper) echo Juniper;; fortinet|fortigate) echo Fortinet;; mikrotik) echo Mikrotik;; *) echo "${1^}";; esac; }
 norm_type()  { case "${1,,}" in router) echo Router;; switch) echo Switch;; olt) echo OLT;; firewall) echo Firewall;; ap|accesspoint|access-point) echo AP;; *) echo "${1^}";; esac; }
 
 is_exec_brand() { [ "$1" = "Mikrotik" ]; }
 
-paging_cmd()   { case "$1" in Huawei) echo "screen-length 0 temporary";; Aruba) echo "no page";; Juniper) echo "set cli screen-length 0";; Mikrotik) :;; *) echo "terminal length 0";; esac; }
-secret_cmd()   { case "$1" in Huawei) echo super;; *) echo enable;; esac; }
-config_enter() { case "$1" in Juniper) echo configure;; Mikrotik) :;; *) echo "configure terminal";; esac; }
-config_leave() { case "$1" in Juniper) echo "exit configuration";; Mikrotik) :;; *) echo end;; esac; }
-save_lines()   { case "$1" in Huawei) echo save; echo Y;; Juniper) echo commit;; Mikrotik) :;; *) echo "write memory";; esac; }
+paging_cmd()   { case "$1" in Huawei) echo "screen-length 0 temporary";; Aruba) echo "no page";; Juniper) echo "set cli screen-length 0";; Mikrotik|Fortinet) :;; *) echo "terminal length 0";; esac; }
+secret_cmd()   { case "$1" in Huawei) echo super;; Fortinet) :;; *) echo enable;; esac; }
+config_enter() { case "$1" in Juniper) echo configure;; Huawei) echo "system-view";; Mikrotik|Fortinet) :;; *) echo "configure terminal";; esac; }
+config_leave() { case "$1" in Juniper) :;; Huawei) echo return;; Mikrotik|Fortinet) :;; *) echo end;; esac; }
+save_lines()   { case "$1" in Huawei) echo save; echo Y;; Juniper) echo commit; echo "exit configuration-mode";; Mikrotik|Fortinet) :;; *) echo "write memory";; esac; }
+save_delay()   { case "$1" in Juniper) echo 15;; *) echo 4;; esac; }
 
 config_cmd_show() { # full config pull command
   case "$1" in
     Mikrotik) echo "/export";;
     Huawei)   echo "display current-configuration";;
+    Juniper)  echo "show configuration | display set";;
+    Fortinet) echo "show full-configuration";;
     *)        echo "show running-config";;
   esac
 }
 hostname_cmd_show() { # hostname pull command
   case "$1" in
     Mikrotik) echo "/system identity print";;
+    Huawei)   echo "display current-configuration | include sysname";;
+    Juniper)  echo "show configuration | display set | match host-name";;
+    Fortinet) echo "get system status";;
     *)        echo "show running-config | include hostname";;
   esac
 }
@@ -94,6 +100,8 @@ err_pattern() {
   case "$1" in
     Mikrotik) echo '^(invalid value|no such item|syntax error|expected |bad command|ambiguous|failure:|script error|\s+error:)';;
     Huawei)   echo '(^%|^\s*(Error|Unrecognized|Wrong parameter|Incomplete command))';;
+    Juniper)  echo '(^%|error:|syntax error|unknown command|invalid value)';;
+    Fortinet) echo '(command parse error|Unknown action|Unknown attribute|unrecognized)';;
     *)        echo '(^%|Invalid input|Incomplete command|Ambiguous|syntax error|Unknown command|^Error)';;
   esac
 }
@@ -148,12 +156,12 @@ extract_cmd_output() { # command transcript
       if (length($0) >= L && substr($0, length($0)-L+1) == cmd) found=1
       next
     }
-    /^[A-Za-z0-9_.()-]+[>#] ?$/ { exit }
+    /^(<[^<>]{1,63}>|\[[^][]+\]|[A-Za-z0-9_.@()-]{1,63}[>#]|[A-Za-z0-9_.@()-]{1,63} #) ?$/ { exit }
     { print }
   ' "$1"
 }
 
-cmd_wait() { case "$1" in *running-config*|*current-configuration*|*"show tech"*|*"display version"*) echo 10;; *) echo 3;; esac; }
+cmd_wait() { case "$1" in *running-config*|*current-configuration*|*"show configuration"*|*full-configuration*|*"get system status"*|*"show tech"*|*"display version"*) echo 10;; *) echo 3;; esac; }
 
 auth_failed() { grep -qE "Permission denied|Authentication failed|no matching|Connection (refused|timed out)|No route to host" "$1" 2>/dev/null; }
 
@@ -161,7 +169,7 @@ build_exec_plan() { # brand secret plan_file cmd...
   local brand=$1 secret=$2 plan=$3; shift 3
   : > "$plan"
   printf '4\t\n' >> "$plan"
-  if [ -n "$secret" ]; then printf '2\t%s\n' "$(secret_cmd "$brand")" >> "$plan"; printf '2\t%s\n' "$secret" >> "$plan"; fi
+  if [ -n "$secret" ] && [ -n "$(secret_cmd "$brand")" ]; then printf '2\t%s\n' "$(secret_cmd "$brand")" >> "$plan"; printf '2\t%s\n' "$secret" >> "$plan"; fi
   printf '2\t%s\n' "$(paging_cmd "$brand")" >> "$plan"
   local c
   for c in "$@"; do printf '%s\t%s\n' "$(cmd_wait "$c")" "$c" >> "$plan"; done
@@ -210,7 +218,12 @@ pull_hostname() { # ip port user pass secret brand -> stdout hostname ('' on fai
     build_exec_plan "$brand" "$secret" "$plan" "$(hostname_cmd_show "$brand")"
     run_session "$ip" "$port" "$user" "$pass" "$plan" "$out" "$(plan_timeout "$plan")" || true
     rm -f "$plan"
-    hn=$(extract_cmd_output "$out" "$(hostname_cmd_show "$brand")" | awk 'tolower($1)=="hostname"{print $2; exit}')
+    case "$brand" in
+      Huawei)   hn=$(extract_cmd_output "$out" "$(hostname_cmd_show "$brand")" | awk 'tolower($1)=="sysname"{print $2; exit}');;
+      Juniper)  hn=$(extract_cmd_output "$out" "$(hostname_cmd_show "$brand")" | awk '$3=="host-name"{print $4; exit}');;
+      Fortinet) hn=$(extract_cmd_output "$out" "$(hostname_cmd_show "$brand")" | awk -F': *' 'tolower($1)=="hostname"{print $2; exit}');;
+      *)        hn=$(extract_cmd_output "$out" "$(hostname_cmd_show "$brand")" | awk 'tolower($1)=="hostname"{print $2; exit}');;
+    esac
   fi
   rm -f "$out"
   printf '%s' "$hn"
@@ -538,7 +551,7 @@ apply_config() { # id script_file reason -> 0 on success
     local plan; plan=$(mktemp "$TMPBASE/ntn.plan.XXXXXX")
     {
       printf '4\t\n'
-      if [ -n "$secret" ]; then printf '2\t%s\n' "$(secret_cmd "$brand")"; printf '2\t%s\n' "$secret"; fi
+      if [ -n "$secret" ] && [ -n "$(secret_cmd "$brand")" ]; then printf '2\t%s\n' "$(secret_cmd "$brand")"; printf '2\t%s\n' "$secret"; fi
       printf '2\t%s\n' "$(paging_cmd "$brand")"
       printf '2\t%s\n' "$(config_enter "$brand")"
       while IFS= read -r line || [ -n "$line" ]; do
@@ -548,7 +561,7 @@ apply_config() { # id script_file reason -> 0 on success
       done < "$script"
       printf '2\t%s\n' "$(config_leave "$brand")"
       local s
-      while IFS= read -r s; do [ -n "$s" ] && printf '4\t%s\n' "$s"; done < <(save_lines "$brand")
+      while IFS= read -r s; do [ -n "$s" ] && printf '%s\t%s\n' "$(save_delay "$brand")" "$s"; done < <(save_lines "$brand")
       printf '3\texit\n'
       if [ -n "$secret" ]; then printf '2\texit\n'; fi
       printf '2\t\n'
@@ -697,7 +710,7 @@ ntn — NTnRoute.AI device engine
   ntn checkpoints <ref>                      checkpoint history
   ntn audit [N]                              last N audit entries (default 20)
 
-Brands: Cisco, Huawei, Aruba, Arista, Ruijie, Juniper, Mikrotik.
+Brands: Cisco, Huawei, Aruba, Arista, Ruijie, Juniper, Mikrotik, Fortinet.
 Mikrotik -> exec-mode (ssh -T, /export, no write memory).
 Other brands -> interactive CLI (ssh -tt) with paging + automatic save.
 EOF

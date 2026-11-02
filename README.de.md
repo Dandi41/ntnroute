@@ -23,8 +23,10 @@ ebenfalls bash + awk; nur die optionalen Audit-Gates (`cfg_audit.py`,
 | Hersteller | Modus | Config abrufen | Speichern |
 |---|---|---|---|
 | Cisco IOS | interaktives PTY | `show running-config` | `write memory` |
-| Huawei | interaktives PTY | `display current-configuration` | `commit` |
-| Aruba / Arista / Ruijie / Juniper | interaktives PTY | herstellerspezifisch | herstellerspezifisch |
+| Huawei VRP | interaktives PTY | `display current-configuration` | `save` + Bestätigung |
+| Aruba / Arista / Ruijie | interaktives PTY | `show running-config` | `write memory` |
+| Juniper Junos | interaktives PTY | `show configuration \| display set` | `commit` (im Konfigurationsmodus) |
+| Fortinet FortiGate | interaktives PTY | `show full-configuration` | automatisch (wirkt sofort) |
 | MikroTik RouterOS | Exec-Modus (`ssh -T`) | `/export` | automatisch |
 
 Legacy-Krypto (alte Cisco-Images) wird behandelt: `diffie-hellman-group14-sha1`, `ssh-rsa`, `aes128-cbc`, `hmac-sha1` werden bei Bedarf ausgehandelt.
@@ -80,7 +82,7 @@ Eine Config-Änderung läuft immer: Plan → Freigabe → Anwenden → Verifizie
 
 ## Status & Ehrlichkeit
 
-End-to-end an realen Geräten erprobt: Cisco IOS 15.4 und MikroTik RouterOS 7.18.2 (add/list/show/exec/sync, Config + Post-Check, Rollback, destruktive Befehle, Wächter für nicht erreichbare Geräte, Wächter für Gerätefehler).
+End-to-end an realen Geräten erprobt: Cisco IOS 15.4 und MikroTik RouterOS 7.18.2 (add/list/show/exec/sync, Config + Post-Check, Rollback, destruktive Befehle, Wächter für nicht erreichbare Geräte, Wächter für Gerätefehler). Die übrigen Marken (Huawei VRP, Arista EOS, Aruba AOS-CX, Ruijie RGOS, Juniper Junos, Fortinet FortiGate) wurden auf die gleiche Weise gegen emulierte Hersteller-CLIs geprüft (lokales Test-Harness, nicht Teil des Toolkits).
 
 Die Codepfade für Huawei, Aruba, Arista, Ruijie und Juniper existieren, wurden aber **noch** nicht an realer Hardware getestet — als experimentell behandeln und Probleme über Issues melden.
 

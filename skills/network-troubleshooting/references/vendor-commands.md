@@ -148,6 +148,19 @@ The `ntn` engine already handles pagination, enable/secret, and session modes.
 | General | `show cpu` | CPU usage |
 | General | `show memory` | Memory usage |
 
+## Fortinet FortiGate
+
+| Layer | Command | Purpose |
+|---|---|---|
+| L1 | `get system interface physical` | Interface status + IPs |
+| L1 | `diagnose netlink interface list` | Link/MTU/counters detail |
+| L3 | `get router info routing-table all` | Routing table |
+| L3 | `get system arp` | ARP table |
+| L4 | `get firewall policy` | Policy list |
+| General | `get system performance status` | CPU/memory/sessions |
+| General | `get system status` | Version, uptime, hostname |
+| General | `diagnose debug crashlog list` | Crash history |
+
 ## Per-brand notes
 
 - **MikroTik** has no `show` — every command starts with `/`. The `ntn` engine
@@ -160,3 +173,5 @@ The `ntn` engine already handles pagination, enable/secret, and session modes.
   `show controllers`.
 - **Ruijie** is very close to Cisco IOS — the `show` command set is nearly
   identical.
+- **FortiGate** uses `get`/`show`/`diagnose` verbs and `config ... end` blocks
+  that apply on input (no `write memory`, no enable mode, no pager).

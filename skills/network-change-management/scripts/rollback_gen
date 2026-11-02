@@ -4,7 +4,8 @@
 # bash+awk port of rollback_gen.py (same CLI, same output, no Python).
 #
 # Usage:
-#   rollback_gen <change-script> [--vendor cisco|mikrotik] [--existing-config F]
+#   rollback_gen <change-script> [--vendor cisco|mikrotik|huawei|juniper|fortinet]
+#                [--existing-config F]
 #                [--out FILE]
 #
 # Rules:
@@ -20,7 +21,7 @@
 set -o pipefail
 
 usage() {
-  echo "usage: rollback_gen <change-script> [--vendor cisco|mikrotik] [--existing-config F] [--out FILE]" >&2
+  echo "usage: rollback_gen <change-script> [--vendor cisco|mikrotik|huawei|juniper|fortinet|arista|aruba|ruijie] [--existing-config F] [--out FILE]" >&2
   exit 2
 }
 
@@ -35,7 +36,8 @@ while [ $# -gt 0 ]; do
   esac
 done
 [ -n "$script" ] || usage
-case "$vendor" in ""|cisco|mikrotik) ;; *) usage;; esac
+case "$vendor" in ""|cisco|mikrotik|huawei|juniper|fortinet|arista|aruba|ruijie) ;; *) usage;; esac
+case "$vendor" in arista|aruba|ruijie) vendor=cisco;; esac
 [ -r "$script" ] || { echo "rollback_gen: cannot read: $script" >&2; exit 2; }
 [ -z "$cfg" ] || [ -r "$cfg" ] || { echo "rollback_gen: cannot read: $cfg" >&2; exit 2; }
 
@@ -68,34 +70,39 @@ function is_create_hint(line,    t) {
 }
 function is_noop_no(line,    t) {
   t = tolower(strip(line))
-  return t ~ /^no (shutdown|ip domain lookup|ip http server|ip http secure-server|ipv6 cef|cdp run|service pad|ip source-route|ip bootp server)$/
+  return t ~ /^(no|undo|delete) (shutdown|ip domain lookup|ip http server|ip http secure-server|ipv6 cef|cdp run|service pad|ip source-route|ip bootp server)$/
 }
 function is_destructive_no(line,    t) {
   t = tolower(strip(line))
-  return t ~ /^no (ip address|ip route|vlan|username|line |interface |enable |switchport|encapsulation|channel-group|ip default-gateway|ntp server|logging host|snmp-server|bridge-group|ip nat|access-list|ip dhcp pool|crypto|aaa)/
+  return t ~ /^(no|undo|delete) (ip address|ip route|vlan|username|line |interface |enable |switchport|encapsulation|channel-group|ip default-gateway|ntp server|logging host|snmp-server|bridge-group|ip nat|access-list|ip dhcp pool|crypto|aaa)/
 }
-function unnegate(line) { sub(/^no +/, "", line); return line }
+function unnegate(line) { sub(/^(no|undo|delete) +/, "", line); return line }
+function negpfx() { return V == "huawei" ? "undo " : V == "juniper" ? "delete " : "no " }
+function dequote(line) { # Junos display-set: `set X` rolls back as `delete X`
+  if (V == "juniper" && line ~ /^set /) return substr(line, 5)
+  return line
+}
 function warn(msg) { wn++; warns[wn] = msg }
 
 # negate_child: fills NC[1..NCN] (1 or 2 lines) — inverse of one child line
 function negate_child(c,    t) {
   NCN = 1
   t = tolower(c)
-  if (t ~ /^no shutdown$/) {
+  if (t ~ /^(no|undo) shutdown$/) {
     NC[1] = "# WARNING rollback shuts the link down: shutdown"; NC[2] = "shutdown"; NCN = 2
   } else if (t ~ /^shutdown$/) {
-    NC[1] = "no shutdown"
-  } else if (substr(c, 1, 3) == "no ") {
+    NC[1] = negpfx() "shutdown"
+  } else if (c ~ /^(no|undo|delete) /) {
     if (t ~ /^no (shutdown|description|ip address|mtu)$/)
       NC[1] = "# TODO restore old value from snapshot: " unnegate(c)
     else
       NC[1] = unnegate(c)
   } else if (t ~ /^description([^[:alnum:]_]|$)/) {
-    NC[1] = "no description"
+    NC[1] = negpfx() "description"
   } else if (t ~ /^ip address([^[:alnum:]_]|$)/) {
-    NC[1] = "# TODO restore old address from snapshot: no ip address"; NC[2] = "no ip address"; NCN = 2
+    NC[1] = "# TODO restore old address from snapshot: " negpfx() "ip address"; NC[2] = negpfx() "ip address"; NCN = 2
   } else {
-    NC[1] = "no " c
+    NC[1] = negpfx() dequote(c)
   }
 }
 function emit(s) { on++; outl[on] = s }
@@ -116,6 +123,13 @@ function generate(    i, raw, line, j, nxt, c, k) {
     i++
     if (line == "" || substr(line, 1, 1) == "#" || substr(line, 1, 1) == "!" || is_nav(line))
       continue
+    if (V == "fortinet") {
+      # FortiGate rollback needs `unset`/`delete` inside the right config
+      # context — a mechanical prefixer would produce garbage
+      emit("# TODO manual rollback: " line)
+      warn("FortiGate line needs a hand-written inverse (unset/delete in context): " line)
+      continue
+    }
     if (V == "mikrotik" && is_path_only(line)) {
       # RouterOS: a context line must be re-emitted with every child, and
       # removal is by `remove [find ...]`, not by `no`.
@@ -156,9 +170,9 @@ function generate(    i, raw, line, j, nxt, c, k) {
       if (CFG_GIVEN && header_absent(line)) {
         # whole block is new: undoing it means deleting the parent, not
         # peeling off each child
-        emit("no " line)
+        emit(negpfx() dequote(line))
         warn("`" line "` did not exist before this change, so the rollback " \
-             "deletes it entirely (`no " line "`)")
+             "deletes it entirely (`" negpfx() dequote(line) "`)")
         continue
       }
       emit(line)
@@ -170,7 +184,7 @@ function generate(    i, raw, line, j, nxt, c, k) {
     }
 
     # headerless / childless line
-    if (substr(line, 1, 3) == "no ") {
+    if (line ~ /^(no|undo|delete) /) {
       if (is_noop_no(line)) {
         warn("`" line "` is idempotent — there is nothing to restore, so it is " \
              "omitted from the rollback (re-emitting it would remove the state, " \
@@ -185,12 +199,12 @@ function generate(    i, raw, line, j, nxt, c, k) {
       }
       emit(unnegate(line))
     } else if (is_create_hint(line)) {
-      emit("no " line)
+      emit(negpfx() dequote(line))
     } else if (V == "mikrotik") {
       emit("# TODO manual rollback: " line)
       warn("RouterOS line needs a hand-written inverse: " line)
     } else {
-      emit("no " line)
+      emit(negpfx() dequote(line))
     }
   }
 }
@@ -199,8 +213,10 @@ function check_parent_deletion(    i, s, target, k, t) {
   if (cn == 0) return
   for (i = 1; i <= on; i++) {
     s = strip(outl[i])
-    if (substr(s, 1, 3) != "no ") continue
-    target = strip(substr(s, 4))
+    if (s !~ /^(no|undo|delete) /) continue
+    target = s
+    sub(/^(no|undo|delete) +/, "", target)
+    target = strip(target)
     for (k = 1; k <= cn; k++) {
       t = strip(cfgl[k])
       if (t == target) {

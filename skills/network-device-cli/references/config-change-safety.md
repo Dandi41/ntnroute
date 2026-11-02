@@ -50,6 +50,7 @@ Treat a reply as failed when it matches any of these, case-insensitively:
   `Unrecognized command found`.
 - Juniper: `syntax error`, `unknown command`, `statement not found`.
 - MikroTik: `syntax error`, `failure:`, `bad command name`.
+- FortiGate: `command parse error`, `Unknown action`, `Unknown attribute`.
 
 A `%` at the start of a line is worth treating as an error even without the word
 `Invalid` — a rejected command is more often reported than explained.
@@ -66,6 +67,7 @@ A `%` at the start of a line is worth treating as an error even without the word
 | Aruba | `no page` | `show running-config` | `write memory` | `configure terminal` | no |
 | Juniper | `set cli screen-length 0` | `show configuration \| display set` | `commit` | `configure` | no |
 | MikroTik | none needed | `/export compact` | none (applies on input) | none | no |
+| FortiGate | none needed | `show full-configuration` | none (applies on input) | none | no |
 
 Brand strings arrive as whatever the user typed. Normalise case and map
 `ios`/`cisco_ios`→cisco, `switch`/`router`→cisco, `vrp`/`datacom`→huawei,

@@ -16,7 +16,7 @@ metadata:
 
 Use when the user asks about network devices in the NTnRoute inventory: listing/adding/removing devices, running CLI commands on them, pulling config, applying config changes, rollback, or troubleshooting connectivity.
 
-Use when managing, configuring, or troubleshooting network devices in the NTnRoute inventory (Cisco, Huawei, Aruba, Ruijie, Arista, Juniper, Mikrotik).
+Use when managing, configuring, or troubleshooting network devices in the NTnRoute inventory (Cisco, Huawei, Aruba, Ruijie, Arista, Juniper, Mikrotik, Fortinet).
 
 Port of the n8n NTnRoute.AI workflow to Hermes. Persistence lives in a plain JSON file, not in a conversation: device data survives session changes, `/new`, and restarts.
 
@@ -128,7 +128,10 @@ Proven end-to-end (not just designed):
 | Brand | Mode | Transport | Pull config | Save |
 |---|---|---|---|---|
 | Mikrotik | EXEC | `ssh -T`, commands via stdin, no PTY | `/export` | automatic (no `write memory`) |
-| Cisco/Huawei/Aruba/Arista/Ruijie/Juniper | PTY | `ssh -tt` + paced plan | `show running-config` / `display current-configuration` | `write memory` / `save`+`Y` / `commit` |
+| Cisco/Aruba/Arista/Ruijie | PTY | `ssh -tt` + paced plan | `show running-config` | `write memory` |
+| Huawei | PTY | `ssh -tt` + paced plan | `display current-configuration` | `save` + `Y` (from `system-view`: `return` first) |
+| Juniper | PTY | `ssh -tt` + paced plan | `show configuration \| display set` | `commit` **inside** config mode, then `exit configuration-mode` |
+| Fortinet | PTY | `ssh -tt` + paced plan | `show full-configuration` | automatic (no save/enable; script lines apply on input) |
 
 `is_exec_brand()` in the engine picks the branch. MikroTik has **no** `configure terminal`, `enable`, `terminal length 0`, or `write memory` — never insert those commands in a MikroTik script.
 
