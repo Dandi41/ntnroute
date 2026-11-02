@@ -14,6 +14,8 @@ ok()  { printf 'OK: %s\n' "$*"; }
 for dep in jq ssh; do
   command -v "$dep" >/dev/null 2>&1 || err "missing dependency: $dep (install it, then re-run)"
 done
+command -v timeout >/dev/null 2>&1 || command -v gtimeout >/dev/null 2>&1 \
+  || err "missing dependency: timeout (GNU coreutils) — macOS: brew install coreutils"
 ok "dependencies found (bash, jq, ssh)"
 
 # --- engine ------------------------------------------------------------------

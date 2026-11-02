@@ -54,7 +54,7 @@ Campos: `paging`, `secret_cmd`, `config_enter`, `config_leave`, `save_lines` (ar
 
 ## Instalación
 
-Requisitos: Linux/macOS con `bash`, `jq`, `ssh` (OpenSSH).
+Requisitos: Linux/macOS con `bash`, `jq`, `ssh` (OpenSSH). macOS necesita GNU coreutils para `timeout` (`brew install coreutils`).
 
 ```bash
 git clone https://github.com/Dandi41/ntnroute.git

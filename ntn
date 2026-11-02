@@ -34,6 +34,8 @@ die() { echo "ERROR: $*" >&2; exit 1; }
 umask 077
 command -v jq  >/dev/null 2>&1 || die "jq not found"
 command -v ssh >/dev/null 2>&1 || die "ssh not found"
+TIMEOUT_BIN="$(command -v timeout || command -v gtimeout || true)"
+[ -n "$TIMEOUT_BIN" ] || die "timeout not found (GNU coreutils) — macOS: brew install coreutils"
 
 mkdir -p "$BACKUP_DIR"
 [ -f "$DB" ] || { echo '{"devices":[],"checkpoints":[],"audit":[],"next_id":1}' > "$DB"; chmod 600 "$DB"; }
@@ -129,7 +131,7 @@ run_session() { # ip port user pass plan_file out_file timeout_s
       if [ -n "$cmd" ]; then printf '%s\n' "$cmd"; fi
     done < "$plan"
   ) | NTN_PW="$pass" SSH_ASKPASS="$work/askpass.sh" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 \
-      timeout "$tmo" ssh -tt "${SSH_OPTS[@]}" -p "$port" "$user@$ip" 2>&1 \
+      "$TIMEOUT_BIN" "$tmo" ssh -tt "${SSH_OPTS[@]}" -p "$port" "$user@$ip" 2>&1 \
     | tr -d '\r' > "$out"
   rc=${PIPESTATUS[1]}
   chmod 600 "$out" 2>/dev/null
@@ -147,7 +149,7 @@ run_exec_mode() { # ip port user pass commands_file out_file timeout_s
   printf '#!/bin/bash\nprintf "%%s\\n" "$NTN_PW"\n' > "$work/askpass.sh"
   chmod 700 "$work/askpass.sh"
   NTN_PW="$pass" SSH_ASKPASS="$work/askpass.sh" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 \
-    timeout "$tmo" ssh -T "${SSH_OPTS[@]}" -p "$port" "$user@$ip" < "$cmds" 2>&1 \
+    "$TIMEOUT_BIN" "$tmo" ssh -T "${SSH_OPTS[@]}" -p "$port" "$user@$ip" < "$cmds" 2>&1 \
     | tr -d '\r' | grep -v '^Warning: Permanently added' > "$out"
   rc=${PIPESTATUS[0]}
   chmod 600 "$out" 2>/dev/null

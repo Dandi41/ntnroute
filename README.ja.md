@@ -54,7 +54,7 @@ Python（標準ライブラリのみ）を使うのは任意の監査ゲート�
 
 ## インストール
 
-要件：`bash`、`jq`、`ssh`（OpenSSH）のあるLinux/macOS。
+要件：`bash`、`jq`、`ssh`（OpenSSH）のあるLinux/macOS。macOS は GNU coreutils（`brew install coreutils`）が必要です。
 
 ```bash
 git clone https://github.com/Dandi41/ntnroute.git
