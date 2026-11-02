@@ -13,7 +13,10 @@ SSH-basierte Network-Device-Engine für KI-Agenten: ein kompaktes Geräte-Invent
 - **Rollback** — jede Änderung legt einen Checkpoint an; `ntn rollback` wendet das gespeicherte Rückgängig-Skript an.
 - **Audit-Trail** — `ntn audit` zeigt die letzten Operationen.
 
-Kein Python, kein Agent, kein Daemon: nur **bash + jq + OpenSSH**.
+Die Engine besteht nur aus bash + jq + OpenSSH — kein Python, kein Agent, kein
+Daemon. Die Hilfsskripte (`triage`, `rollback_gen`, `ios_session.sh`) sind
+ebenfalls bash + awk; nur die optionalen Audit-Gates (`cfg_audit.py`,
+`sec_audit.py`) nutzen Standard-Python.
 
 ## Unterstützte Plattformen
 

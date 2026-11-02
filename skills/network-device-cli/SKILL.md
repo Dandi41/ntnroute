@@ -128,7 +128,7 @@ Reading is cheap; writing is not. For anything that changes state:
    apply → save → verify → rollback loop and the per-vendor command profiles.
    Where the `network-change-management` skill is installed, run its gates:
    `cfg_audit.py --change <script> --config <saved-config> --mgmt-ip <ip>`
-   exits 1 on any line that can lock you out, and `rollback_gen.py <script>
+   exits 1 on any line that can lock you out, and `rollback_gen <script>
    --existing-config <saved-config>` drafts the rollback — read it line by
    line and fill its `# TODO restore from snapshot:` entries before use.
 4. Never send a command that can cut your own path back in: VTY/management
@@ -142,45 +142,39 @@ A change is not "done" because the device echoed the line. Re-read the running
 config and check the lines are actually present; a capture that shows no error is
 weaker evidence than a captured config containing the line.
 
-## 7. Persistent interactive session (paramiko)
+## 7. Persistent interactive session (OpenSSH)
 
 One-shot OpenSSH suits a single `show`. For a session that enters `enable` with a
-secret and then runs a dozen commands, drive one PTY channel with paramiko
-instead of spawning an ssh per command.
-
-```python
-c.connect(host, port=22, username=user, password=pw, timeout=20,
-          look_for_keys=False, allow_agent=False,
-          disabled_algorithms={"pubkeys": ["rsa-sha2-256", "rsa-sha2-512"]})
-chan = c.invoke_shell(width=400, height=2000)
-```
-
-- The disabled-pubkeys list is what lets an `ssh-rsa` host key negotiate; omit it
-  and you land in the same "no acceptable" dead end as an unpatched OpenSSH.
-- Drain by **idle timeout** (read until ~0.7 s pass with no bytes), not a fixed
-  sleep — gear that pauses mid-output otherwise returns truncated text. On a
-  stray `--More--` send a space and keep reading.
-- Strip ANSI, drop the echoed command line, then drop the trailing prompt. The
-  prompt is your completion signal; detect it instead of sleeping longer.
-- `enable`: wait for `assword` in the banner before sending the secret, then
-  confirm the prompt ends in `#`. Report the prompt you actually saw rather than
-  assuming the enable succeeded.
-- Keep the password out of `argv` — pass it in the environment or in-process.
-
-If paramiko itself refuses the kex (`IncompatiblePeer: no acceptable kex
-algorithm`) while OpenSSH connects fine with the step-2 flags, the installed
-paramiko is newer than the device's algorithm set: recent releases dropped
-`diffie-hellman-group14-sha1` and `ssh-rsa` from the defaults, and flags cannot
-add them back. Vendor a version that still ships them and put it first on
-`sys.path`:
+secret and then runs a dozen commands, hold one PTY open instead of spawning an
+ssh per command — the engine's own technique, no paramiko, no Python:
 
 ```bash
-pip install --break-system-packages --target ~/.ntnroute/vendor 'paramiko==3.5.1'
+SSH_ASKPASS=/tmp/askpass SSH_ASKPASS_REQUIRE=force setsid \
+  ssh -tt -o KexAlgorithms=+diffie-hellman-group14-sha1 \
+      -o HostKeyAlgorithms=+ssh-rsa -o PubkeyAcceptedAlgorithms=+ssh-rsa \
+      -o Ciphers=+aes128-cbc -o MACs=+hmac-sha1 admin@10.0.0.5 < plan
 ```
 
-`--user` and `--target` cannot be combined (`Can not combine '--user' and
-'--target'`); `--break-system-packages` is what lets a system-Python install
-land. `scripts/ios_session.py` is this session shape as a runnable CLI.
+- `SSH_ASKPASS` + `setsid` (no controlling tty) supplies the password without
+  sshpass; `SSH_ASKPASS_REQUIRE=force` needs OpenSSH 8.4+.
+- `-tt` forces the PTY so the device prints prompts; feed a paced plan of
+  `delay<TAB>command` pairs on stdin — pause after connect, then one line at a
+  time. Pacing replaces read-until-idle: gear that pauses mid-output otherwise
+  gets the next command typed into the middle of the previous one.
+- On a piped PTY the prompt is never a standalone line: the device prints it and
+  the next command lands on the same line (`R2>show clock`). Parse prompts as a
+  line *prefix* (`^[A-Za-z0-9_.-]{1,63}[>#]`), not a line suffix.
+- Disable paging first (`terminal length 0`); a stray `--More--` cannot be
+  answered from a pipe.
+- `enable`: send `enable`, pause, send the secret, then confirm the prompt ends
+  in `#`. Report the prompt you actually saw rather than assuming the enable
+  succeeded.
+- Keep the password out of `argv` — the askpass helper reads it from the
+  environment.
+
+`scripts/ios_session.sh` is this session shape as a runnable CLI (same flags as
+the old paramiko version: `--host --user --password --secret --cmd --show-config
+--paging`).
 
 ## Credential parsing pitfall
 
@@ -195,7 +189,7 @@ the string wrong.
 
 - `scripts/legacy-ssh.sh` — wraps the flags, askpass, and hold-open stdin so a
   one-shot command works first try.
-- `scripts/ios_session.py` — persistent paramiko PTY session (enable, paging off,
+- `scripts/ios_session.sh` — persistent OpenSSH PTY session (enable, paging off,
   read running config) as a runnable CLI.
 - `references/config-change-safety.md` — checkpoint → apply → save → verify →
   rollback loop, rollback-script rules, and per-vendor command profiles.

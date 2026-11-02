@@ -13,7 +13,9 @@ SSH-based network device engine for AI agents: a small device inventory, safe CL
 - **Rollback** — every change stores a checkpoint; `ntn rollback` applies the stored undo script.
 - **Audit trail** — `ntn audit` shows the last operations.
 
-No Python, no agents, no daemons: **bash + jq + OpenSSH** only.
+The engine is bash + jq + OpenSSH only — no Python, no agents, no daemons. The
+helper scripts (`triage`, `rollback_gen`, `ios_session.sh`) are bash + awk too;
+only the optional audit gates (`cfg_audit.py`, `sec_audit.py`) use stdlib Python.
 
 ## Supported platforms
 

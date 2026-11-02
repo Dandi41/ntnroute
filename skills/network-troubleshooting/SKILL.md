@@ -13,7 +13,7 @@ metadata:
 # Network Troubleshooting
 
 Network device diagnosis using the OSI layer principle, backed by the `ntn`
-engine and the `triage.py` script that reads `show` output without touching
+engine and the `triage` script that reads `show` output without touching
 the device.
 
 ## When to Use
@@ -73,7 +73,7 @@ ntn exec <ref> 'show interfaces' 'show ip route' 'show ip arp' > out.txt
 
 ```bash
 S=~/.hermes/skills/networking/network-troubleshooting/scripts
-python3 $S/triage.py out.txt --mgmt-ip <ip-mgmt>
+$S/triage out.txt --mgmt-ip <ip-mgmt>
 ```
 
 Output: per-layer findings (CRIT/WARN/INFO) plus a verdict. Exit 1 = there is
@@ -116,22 +116,22 @@ fails, check the syntax in the vendor's official documentation.
   (plural) for everything and `show interface <name>` (singular) for one port.
   Misspell it and you get an error.
 - **RouterOS exec-mode does not keep context.** Every line stands alone.
-  `triage.py` already handles this, but if you run commands manually, use the
+  `triage` already handles this, but if you run commands manually, use the
   full path.
 - **MikroTik `/interface print` vs `/interface ethernet print`.** The first
   lists all interfaces, the second only ethernet. Use the first for triage.
-- **Never touch the management interface.** `triage.py` flags the interface
+- **Never touch the management interface.** `triage` flags the interface
   carrying your SSH IP. If that goes down, you lose access.
-- **Exit 1 from triage.py is not a tool failure.** It is a verdict: there is a
+- **Exit 1 from triage is not a tool failure.** It is a verdict: there is a
   physical/link problem that must be fixed before any configuration change.
 
 ## Verification
 
 Verified on the lab Cisco router (IOS 15.4) and the lab RouterOS device
 (RouterOS 7.18.2):
-- `triage.py` on the lab Cisco router's `show interfaces` output → CRIT=0,
+- `triage` on the lab Cisco router's `show interfaces` output → CRIT=0,
   exit 0, management interface flagged correctly.
-- `triage.py` on the lab RouterOS device's `/interface print detail` output →
+- `triage` on the lab RouterOS device's `/interface print detail` output →
   CRIT=1 (ether4 not running), WARN=1 (ether2 link-flaps), exit 1.
 - Synthetic output (interface down, half-duplex, CRC, no default route, ARP
   incomplete) → all detected with the correct severity.

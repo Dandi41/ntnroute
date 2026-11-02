@@ -12,10 +12,10 @@ metadata:
 
 # Network Change Management
 
-Two stdlib-Python gates that sit between "change script drafted" and "apply to device". They never touch hardware — they decide whether a change is safe to run, and they produce the undo for it. Pairs with the `ntnroute` skill: gate first, then `ntn config`.
+Two gates that sit between "change script drafted" and "apply to device". They never touch hardware — they decide whether a change is safe to run, and they produce the undo for it. Pairs with the `ntnroute` skill: gate first, then `ntn config`.
 
-- `scripts/cfg_audit.py` — audits a saved running-config (CRIT/WARN/INFO hardening findings) and, with `--change`, gates a pending change script for lockout risk before it goes anywhere near a device.
-- `scripts/rollback_gen.py` — derives a rollback script from the change script, applying the rules a naive `no <line>` prefixer gets wrong (blocks, negations, creates vs edits).
+- `scripts/cfg_audit.py` (stdlib Python) — audits a saved running-config (CRIT/WARN/INFO hardening findings) and, with `--change`, gates a pending change script for lockout risk before it goes anywhere near a device.
+- `scripts/rollback_gen` (bash + awk, no Python) — derives a rollback script from the change script, applying the rules a naive `no <line>` prefixer gets wrong (blocks, negations, creates vs edits).
 
 Both print text verdicts and exit 1 when a CRITICAL finding applies to the decision at hand.
 
@@ -37,7 +37,7 @@ the change is "just one line".
 1. **Plan + brief rationale** — what changes, why, what it fixes or enables.
 2. **Configuration to be applied** — the exact script, verbatim, in a code
    block. Not a summary, not "and similar lines".
-3. **Rollback** — the exact undo script, verbatim (from `rollback_gen.py`).
+3. **Rollback** — the exact undo script, verbatim (from `rollback_gen`).
 4. **Post-apply verification** — the exact read-only command that proves it
    worked, and the expected output token or state. Written before applying, never
    invented after.
@@ -76,7 +76,7 @@ python3 $S/cfg_audit.py --change change.cmd --config <synced>.cfg \
 5. Generate the rollback:
 
 ```bash
-python3 $S/rollback_gen.py change.cmd --existing-config <synced>.cfg --out rollback.cmd
+$S/rollback_gen change.cmd --existing-config <synced>.cfg --out rollback.cmd
 ```
 
 6. Read `rollback.cmd` line by line, fill every `# TODO restore from snapshot:`
@@ -102,7 +102,7 @@ Config-only audit (no pending change): `python3 $S/cfg_audit.py <file.cfg> --mgm
   promise; skipping it because `ntn config` printed `STATUS: SUCCESS` is the
   failure mode this gate exists to stop.
 - **Gate and audit verdicts are separate.** With `--change`, pre-existing config findings print as context but change neither the verdict nor the exit code — a pre-existing plaintext password must not block an unrelated interface edit. Harden it separately.
-- **Mikrotik rollbacks are placeholders.** RouterOS has no `no` form; `rollback_gen.py` emits `remove [find]  # TODO: narrow the find`. Narrow it to the exact object before use.
+- **Mikrotik rollbacks are placeholders.** RouterOS has no `no` form; `rollback_gen` emits `remove [find]  # TODO: narrow the find`. Narrow it to the exact object before use.
 - **`no shutdown` rollbacks re-shut the link.** Emitted with a `# WARNING` comment — that is the blast-radius case; decide consciously, don't paste blindly.
 - **TODO lines are deliberately incomplete commands.** The pre-change value exists only in the pre-change snapshot, never in the change script; the tool refuses to guess.
 - Vendor auto-detects from config text (RouterOS `/export` vs Cisco-style); pass `--vendor` only for ambiguous files.

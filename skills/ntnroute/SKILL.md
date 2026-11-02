@@ -91,7 +91,7 @@ python3 $S/cfg_audit.py --change "$TMPDIR/change.cmd" \
 # If the mgmt IP is DHCP-learned: add --mgmt-interface <iface> so lockout stays CRIT.
 # VERDICT REWRITE (exit 1) = fix the script, re-gate. PROCEED = continue.
 # 3. generate rollback, read it line by line, fill in "# TODO restore from snapshot:" from the pre-config
-python3 $S/rollback_gen.py "$TMPDIR/change.cmd" \
+$S/rollback_gen "$TMPDIR/change.cmd" \
   --existing-config ~/.ntnroute/backups/<file-from-sync>.cfg \
   --out "$TMPDIR/rollback.cmd"
 # MikroTik: the result contains `remove [find]` placeholders — narrow each find to the

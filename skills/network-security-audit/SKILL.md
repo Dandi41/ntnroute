@@ -93,7 +93,7 @@ proposal.
 |---|---|
 | `ntnroute` | inventory, transport, `ntn config`/rollback |
 | `network-device-cli` | how to SSH to devices directly (outside ntn) |
-| `network-troubleshooting` | outage diagnosis, OSI layers, `triage.py` |
+| `network-troubleshooting` | outage diagnosis, OSI layers, `triage` |
 | `network-change-management` | change gate, approval, rollback, `cfg_audit.py` |
 | `network-security-audit` (this) | security findings, CVE/baseline, audit report |
 

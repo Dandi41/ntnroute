@@ -1,0 +1,265 @@
+#!/usr/bin/env bash
+# rollback_gen — derive a rollback script from a change script, following the
+# rules that a naive `no <line>` prefixer gets wrong.
+# bash+awk port of rollback_gen.py (same CLI, same output, no Python).
+#
+# Usage:
+#   rollback_gen <change-script> [--vendor cisco|mikrotik] [--existing-config F]
+#                [--out FILE]
+#
+# Rules:
+#   - top-level line        -> `no <line>`
+#   - line already `no X`   -> `X`            (the undo of a negation)
+#   - block header + body   -> header once, then `no <child>` per child
+#   - header with no body   -> `no <header>`  (it was a create)
+#   - navigation/comments   -> dropped (configure terminal, end, exit, commit, save, !)
+#
+# --existing-config warns when the rollback would delete a parent object that
+# exists on the device independently of this change (a real lockout risk).
+# Exit 1 when the generated rollback looks unsafe, 0 otherwise.
+set -o pipefail
+
+usage() {
+  echo "usage: rollback_gen <change-script> [--vendor cisco|mikrotik] [--existing-config F] [--out FILE]" >&2
+  exit 2
+}
+
+script="" vendor="" cfg="" out=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --vendor) [ $# -ge 2 ] || usage; vendor=$2; shift 2;;
+    --existing-config) [ $# -ge 2 ] || usage; cfg=$2; shift 2;;
+    --out) [ $# -ge 2 ] || usage; out=$2; shift 2;;
+    -h|--help|--*) usage;;
+    *) [ -z "$script" ] || usage; script=$1; shift;;
+  esac
+done
+[ -n "$script" ] || usage
+case "$vendor" in ""|cisco|mikrotik) ;; *) usage;; esac
+[ -r "$script" ] || { echo "rollback_gen: cannot read: $script" >&2; exit 2; }
+[ -z "$cfg" ] || [ -r "$cfg" ] || { echo "rollback_gen: cannot read: $cfg" >&2; exit 2; }
+
+AWK_BIN=$(command -v gawk || command -v awk)
+[ -n "$AWK_BIN" ] || { echo "rollback_gen: no awk found" >&2; exit 2; }
+# the parser needs gawk's 3-argument match(); probe rather than assume
+"$AWK_BIN" 'BEGIN { match("ab", /(b)/, m) }' 2>/dev/null || {
+  echo "rollback_gen: this awk lacks 3-argument match() — install gawk" >&2; exit 2
+}
+export RG_VENDOR="$vendor" RG_CFG="$cfg" RG_OUT="$out"
+
+AWKPROG=$(cat <<'AWKEOF'
+# ---- helpers ---------------------------------------------------------------
+function strip(s) { gsub(/^[[:space:]]+|[[:space:]]+$/, "", s); return s }
+function rstrip(s) { sub(/[[:space:]]+$/, "", s); return s }
+function is_nav(line,    t) {
+  t = tolower(strip(line))
+  return t == "configure" || t == "configure terminal" || t == "end" || \
+         t == "exit" || t == "return" || t == "system-view" || t == "quit" || \
+         t == "commit" || t == "save" || t == "save force" || \
+         t == "write memory" || t == "write" || t == "y" || t == "yes" || \
+         t == "no page" || t == "terminal length 0" || \
+         t == "screen-length 0 temporary" || t == "screen-length disable" || \
+         t == "set cli screen-length 0"
+}
+function is_path_only(line) { return line ~ /^\/[A-Za-z0-9_\- ]+$/ }
+function is_create_hint(line,    t) {
+  t = tolower(strip(line))
+  return t ~ /^(vlan [0-9]+|ip route [^[:space:]]+|ip dhcp pool [^[:space:]]+|ip access-list [^[:space:]]+|router [a-z0-9_]+|route-map [^[:space:]]+|policy-map [^[:space:]]+|class-map [^[:space:]]+)$/
+}
+function is_noop_no(line,    t) {
+  t = tolower(strip(line))
+  return t ~ /^no (shutdown|ip domain lookup|ip http server|ip http secure-server|ipv6 cef|cdp run|service pad|ip source-route|ip bootp server)$/
+}
+function is_destructive_no(line,    t) {
+  t = tolower(strip(line))
+  return t ~ /^no (ip address|ip route|vlan|username|line |interface |enable |switchport|encapsulation|channel-group|ip default-gateway|ntp server|logging host|snmp-server|bridge-group|ip nat|access-list|ip dhcp pool|crypto|aaa)/
+}
+function unnegate(line) { sub(/^no +/, "", line); return line }
+function warn(msg) { wn++; warns[wn] = msg }
+
+# negate_child: fills NC[1..NCN] (1 or 2 lines) — inverse of one child line
+function negate_child(c,    t) {
+  NCN = 1
+  t = tolower(c)
+  if (t ~ /^no shutdown$/) {
+    NC[1] = "# WARNING rollback shuts the link down: shutdown"; NC[2] = "shutdown"; NCN = 2
+  } else if (t ~ /^shutdown$/) {
+    NC[1] = "no shutdown"
+  } else if (substr(c, 1, 3) == "no ") {
+    if (t ~ /^no (shutdown|description|ip address|mtu)$/)
+      NC[1] = "# TODO restore old value from snapshot: " unnegate(c)
+    else
+      NC[1] = unnegate(c)
+  } else if (t ~ /^description([^[:alnum:]_]|$)/) {
+    NC[1] = "no description"
+  } else if (t ~ /^ip address([^[:alnum:]_]|$)/) {
+    NC[1] = "# TODO restore old address from snapshot: no ip address"; NC[2] = "no ip address"; NCN = 2
+  } else {
+    NC[1] = "no " c
+  }
+}
+function emit(s) { on++; outl[on] = s }
+
+# header_absent: true when no cfg line equals the header (trailing ws ignored)
+function header_absent(h,    k, t, found) {
+  if (cn == 0) return 1
+  found = 0
+  for (k = 1; k <= cn; k++) { t = rstrip(cfgl[k]); if (t == h) { found = 1; break } }
+  return !found
+}
+
+function generate(    i, raw, line, j, nxt, c, k) {
+  i = 1
+  while (i <= sn) {
+    raw = slines[i]
+    line = strip(raw)
+    i++
+    if (line == "" || substr(line, 1, 1) == "#" || substr(line, 1, 1) == "!" || is_nav(line))
+      continue
+    if (V == "mikrotik" && is_path_only(line)) {
+      # RouterOS: a context line must be re-emitted with every child, and
+      # removal is by `remove [find ...]`, not by `no`.
+      j = i
+      while (j <= sn) {
+        nxt = strip(slines[j])
+        if (nxt == "" || substr(nxt, 1, 1) == "#" || substr(nxt, 1, 1) == "!") { j++; continue }
+        if (is_path_only(nxt)) break
+        c = nxt
+        if (c ~ /^(add|set)([^[:alnum:]_]|$)/) {
+          warn("RouterOS `" line "` / `" c "`: rollback is `remove [find ...]` " \
+               "of the object you add, or the inverse `set` of the old value — " \
+               "written as a placeholder for manual review")
+          emit(line " remove [find]  # TODO: narrow the find to the object you added")
+        } else if (c ~ /^remove([^[:alnum:]_]|$)/) {
+          warn("RouterOS `" line " / " c "`: removed objects cannot be recreated from " \
+               "the script alone; restore from the pre-change export")
+          emit("# TODO restore removed object: " line " " c)
+        } else {
+          emit("# TODO manual rollback: " line " " c)
+        }
+        j++
+      }
+      i = j
+      continue
+    }
+
+    # collect an indented body (Cisco-style block)
+    bn = 0
+    while (i <= sn) {
+      nxt = slines[i]
+      if (strip(nxt) == "" || substr(nxt, 1, 1) == "!") { i++; continue }
+      if (nxt ~ /^[[:space:]]+[^[:space:]]/) { bn++; body[bn] = strip(nxt); i++; continue }
+      break
+    }
+
+    if (bn > 0) {
+      if (CFG_GIVEN && header_absent(line)) {
+        # whole block is new: undoing it means deleting the parent, not
+        # peeling off each child
+        emit("no " line)
+        warn("`" line "` did not exist before this change, so the rollback " \
+             "deletes it entirely (`no " line "`)")
+        continue
+      }
+      emit(line)
+      for (k = 1; k <= bn; k++) {
+        negate_child(body[k])
+        for (j = 1; j <= NCN; j++) emit(NC[j])
+      }
+      continue
+    }
+
+    # headerless / childless line
+    if (substr(line, 1, 3) == "no ") {
+      if (is_noop_no(line)) {
+        warn("`" line "` is idempotent — there is nothing to restore, so it is " \
+             "omitted from the rollback (re-emitting it would remove the state, " \
+             "not add it back)")
+        continue
+      }
+      if (is_destructive_no(line)) {
+        warn("`" line "` removes state; the pre-change value is not in the script " \
+             "— take it from the pre-change snapshot, do not guess")
+        emit("# TODO restore from snapshot: " line)
+        continue
+      }
+      emit(unnegate(line))
+    } else if (is_create_hint(line)) {
+      emit("no " line)
+    } else if (V == "mikrotik") {
+      emit("# TODO manual rollback: " line)
+      warn("RouterOS line needs a hand-written inverse: " line)
+    } else {
+      emit("no " line)
+    }
+  }
+}
+
+function check_parent_deletion(    i, s, target, k, t) {
+  if (cn == 0) return
+  for (i = 1; i <= on; i++) {
+    s = strip(outl[i])
+    if (substr(s, 1, 3) != "no ") continue
+    target = strip(substr(s, 4))
+    for (k = 1; k <= cn; k++) {
+      t = strip(cfgl[k])
+      if (t == target) {
+        pn++
+        probs[pn] = "`" s "` — `" target "` already existed before this change, so this deletes an " \
+                    "object you did not create"
+        break
+      }
+    }
+  }
+}
+
+# ---- main ------------------------------------------------------------------
+{ slines[++sn] = rstrip($0) }
+END {
+  V = ENVIRON["RG_VENDOR"]
+  # vendor default: scan the pre-change config when given, else the script
+  src_n = sn; for (k = 1; k <= sn; k++) srcl[k] = slines[k]
+  if (ENVIRON["RG_CFG"] != "") {
+    while ((getline cl < ENVIRON["RG_CFG"]) > 0) { cn++; cfgl[cn] = cl }
+    close(ENVIRON["RG_CFG"])
+    src_n = cn; for (k = 1; k <= cn; k++) srcl[k] = cfgl[k]
+    CFG_GIVEN = 1
+  }
+  if (V == "") {
+    V = "cisco"
+    for (k = 1; k <= src_n; k++)
+      if (srcl[k] ~ /^\/[^[:space:]]/ || srcl[k] ~ /^add .*=/) { V = "mikrotik"; break }
+  }
+
+  generate()
+  check_parent_deletion()
+
+  text = ""
+  for (k = 1; k <= on; k++) text = text (k > 1 ? "\n" : "") outl[k]
+  text = text "\n"
+
+  if (ENVIRON["RG_OUT"] != "") {
+    printf "%s", text > ENVIRON["RG_OUT"]
+    close(ENVIRON["RG_OUT"])
+    printf "wrote %d rollback line(s) -> %s\n", on, ENVIRON["RG_OUT"] > "/dev/stderr"
+  }
+  printf "vendor=%s rollback_lines=%d\n", V, on
+  print "--- rollback script ---"
+  printf "%s", text
+  if (wn > 0) {
+    print "--- review needed ---"
+    for (k = 1; k <= wn; k++) printf "  %s\n", warns[k]
+  }
+  if (pn > 0) {
+    print "--- UNSAFE ---"
+    for (k = 1; k <= pn; k++) printf "  %s\n", probs[k]
+    print "VERDICT: REWRITE — this rollback can delete more than the change added."
+    exit 1
+  }
+  print "VERDICT: rollback candidate — read it line by line before applying."
+  exit 0
+}
+AWKEOF
+)
+
+LC_ALL=C "$AWK_BIN" "$AWKPROG" "$script"

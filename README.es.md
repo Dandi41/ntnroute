@@ -13,7 +13,10 @@ Motor de gestión de dispositivos de red por SSH para agentes de IA: un pequeño
 - **Rollback** — cada cambio guarda un checkpoint; `ntn rollback` aplica el script de deshacer almacenado.
 - **Registro de auditoría** — `ntn audit` muestra las últimas operaciones.
 
-Sin Python, sin agentes, sin demonios: solo **bash + jq + OpenSSH**.
+El motor es solo bash + jq + OpenSSH — sin Python, sin agentes, sin demonios.
+Los scripts auxiliares (`triage`, `rollback_gen`, `ios_session.sh`) también son
+bash + awk; solo las compuertas de auditoría opcionales (`cfg_audit.py`,
+`sec_audit.py`) usan Python estándar.
 
 ## Plataformas soportadas
 

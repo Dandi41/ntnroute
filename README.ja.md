@@ -13,7 +13,10 @@ AIエージェント向けのSSHベース・ネットワーク機器エンジン
 - **ロールバック** — 変更ごとにチェックポイントを保存。`ntn rollback` で取り消しスクリプトを適用します。
 - **監査ログ** — `ntn audit` が直近の操作を表示します。
 
-Python不要、エージェント不要、デーモン不要。必要なのは **bash + jq + OpenSSH** だけです。
+エンジンは bash + jq + OpenSSH のみ。Pythonもエージェントもデーモンも不要です。
+ヘルパースクリプト（`triage`、`rollback_gen`、`ios_session.sh`）も bash + awk。
+Python（標準ライブラリのみ）を使うのは任意の監査ゲート（`cfg_audit.py`、
+`sec_audit.py`）だけです。
 
 ## 対応プラットフォーム
 

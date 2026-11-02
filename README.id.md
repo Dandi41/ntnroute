@@ -13,7 +13,10 @@ Engine perangkat jaringan berbasis SSH untuk AI agent: inventaris device, ekseku
 - **Rollback** — setiap perubahan menyimpan checkpoint; `ntn rollback` menerapkan script pembatalnya.
 - **Jejak audit** — `ntn audit` menampilkan operasi terakhir.
 
-Tanpa Python, tanpa agent, tanpa daemon: hanya **bash + jq + OpenSSH**.
+Engine hanya bash + jq + OpenSSH — tanpa Python, tanpa agent, tanpa daemon.
+Skrip pembantu (`triage`, `rollback_gen`, `ios_session.sh`) juga bash + awk;
+hanya gerbang audit opsional (`cfg_audit.py`, `sec_audit.py`) yang memakai
+Python stdlib.
 
 ## Platform yang didukung
 
