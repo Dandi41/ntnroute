@@ -135,6 +135,10 @@ Proven end-to-end (not just designed):
 
 `is_exec_brand()` in the engine picks the branch. MikroTik has **no** `configure terminal`, `enable`, `terminal length 0`, or `write memory` — never insert those commands in a MikroTik script.
 
+### Adding a brand — `~/.ntnroute/brands.json`
+
+Per-brand behavior is data, not code: `~/.ntnroute/brands.json` entries override the built-in tables (lowercase brand key). Fields, all optional: `paging`, `secret_cmd`, `config_enter`, `config_leave`, `save_lines` (array; `[]` = no save), `save_delay`, `config_show`, `hostname_show`, `hostname_field` (`hostname`|`sysname`|`host-name`|`colon`), `err_pattern` (ERE), `negate_prefix` (rollback_gen, no trailing space). A brand shipped in `brands.json` ships as `zte` (Cisco-like example — adjust per model). When the user names a vendor that is neither built-in nor profiled: expect generic Cisco-like defaults, the save step is **skipped** with a NOTE, and the right move is to draft a profile (ask for one `show` command output and the device's config-save command), test with `ntn add` + a harmless `ntn config`, then keep the profile in `~/.ntnroute/brands.json` — the installer never overwrites it.
+
 - RouterOS exec-mode is far more reliable than PTY: no banner, paging, or `[admin@host] >` prompt. Commands run sequentially from stdin, separated by newlines. `;` chains also work but one full command per line is easier to read.
 - **RouterOS always exits 0 even when a command fails.** Errors are detected from output patterns: `invalid value`, `no such item`, `syntax error`, `expected end of command`, `bad command name`, `ambiguous`, `failure:`. The engine has these patterns in `err_pattern`.
 - RouterOS exec-mode **does not keep context between lines**. The menu style `/interface ethernet` then `set [ find ... ]` fails (`expected end of command`) because each line runs as a standalone command. The engine normalizes scripts via `mt_normalize()`: pure path lines are merged into the next line as one full-path command. Write MikroTik scripts with the full path per line, or let the engine merge them — never rely on menu context.

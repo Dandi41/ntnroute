@@ -1,0 +1,17 @@
+{
+  "_doc": "Per-brand overrides for the ntn engine. Keys are lowercase brand names and OVERRIDE built-in behavior. Fields (all optional): paging = pager-disabling command (\"\" = none); secret_cmd = privilege command (\"\" = none); config_enter / config_leave = enter/leave config mode; save_lines = array of lines sent after the script ([] = no save); save_delay = seconds per save line; config_show = full config pull command; hostname_show = hostname pull command; hostname_field = hostname|sysname|host-name|colon; err_pattern = grep -E pattern for device errors; negate_prefix = rollback_gen negation prefix without trailing space (no|undo|delete|...). Built-in brands: cisco, huawei, aruba, arista, ruijie, juniper, mikrotik, fortinet. Unknown brands without a profile get generic Cisco-like defaults and skip the save step (running-config only).",
+  "zte": {
+    "_doc": "EXAMPLE profile — ZXR10 is Cisco-like; adjust to your ZTE model/firmware.",
+    "paging": "terminal length 0",
+    "secret_cmd": "enable",
+    "config_enter": "configure terminal",
+    "config_leave": "end",
+    "save_lines": ["write memory"],
+    "save_delay": 4,
+    "config_show": "show running-config",
+    "hostname_show": "show running-config | include hostname",
+    "hostname_field": "hostname",
+    "err_pattern": "(^%|Invalid input|Incomplete command|Ambiguous|syntax error|Unknown command|^Error)",
+    "negate_prefix": "no"
+  }
+}

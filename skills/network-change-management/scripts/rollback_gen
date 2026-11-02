@@ -21,7 +21,8 @@
 set -o pipefail
 
 usage() {
-  echo "usage: rollback_gen <change-script> [--vendor cisco|mikrotik|huawei|juniper|fortinet|arista|aruba|ruijie] [--existing-config F] [--out FILE]" >&2
+  echo "usage: rollback_gen <change-script> [--vendor NAME] [--existing-config F] [--out FILE]"
+echo "  NAME: cisco|mikrotik|huawei|juniper|fortinet or any brand with a brands.json profile; unknown = cisco-family rules" >&2
   exit 2
 }
 
@@ -36,8 +37,16 @@ while [ $# -gt 0 ]; do
   esac
 done
 [ -n "$script" ] || usage
-case "$vendor" in ""|cisco|mikrotik|huawei|juniper|fortinet|arista|aruba|ruijie) ;; *) usage;; esac
+case "$vendor" in ""|[a-z0-9][a-z0-9_-]*) ;; *) usage;; esac
 case "$vendor" in arista|aruba|ruijie) vendor=cisco;; esac
+# brands.json profile may override the negation prefix (no trailing space)
+NTN_HOME="${NTN_HOME:-$HOME/.ntnroute}"
+RG_PFX=""
+if [ -n "$vendor" ] && [ -f "$NTN_HOME/brands.json" ]; then
+  p=$(jq -r --arg b "$vendor" '(.[$b].negate_prefix // "")' "$NTN_HOME/brands.json" 2>/dev/null)
+  case "$p" in ""|null) ;; *) RG_PFX="$p ";; esac
+fi
+export RG_PFX
 [ -r "$script" ] || { echo "rollback_gen: cannot read: $script" >&2; exit 2; }
 [ -z "$cfg" ] || [ -r "$cfg" ] || { echo "rollback_gen: cannot read: $cfg" >&2; exit 2; }
 
@@ -77,7 +86,7 @@ function is_destructive_no(line,    t) {
   return t ~ /^(no|undo|delete) (ip address|ip route|vlan|username|line |interface |enable |switchport|encapsulation|channel-group|ip default-gateway|ntp server|logging host|snmp-server|bridge-group|ip nat|access-list|ip dhcp pool|crypto|aaa)/
 }
 function unnegate(line) { sub(/^(no|undo|delete) +/, "", line); return line }
-function negpfx() { return V == "huawei" ? "undo " : V == "juniper" ? "delete " : "no " }
+function negpfx() { if (ENVIRON["RG_PFX"] != "") return ENVIRON["RG_PFX"]; return V == "huawei" ? "undo " : V == "juniper" ? "delete " : "no " }
 function dequote(line) { # Junos display-set: `set X` rolls back as `delete X`
   if (V == "juniper" && line ~ /^set /) return substr(line, 5)
   return line

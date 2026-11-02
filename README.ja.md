@@ -31,6 +31,27 @@ Python（標準ライブラリのみ）を使うのは任意の監査ゲート�
 
 レガシー暗号（古いCiscoイメージ）にも対応：`diffie-hellman-group14-sha1`、`ssh-rsa`、`aes128-cbc`、`hmac-sha1` を必要に応じてネゴシエートします。
 
+## 新しいベンダーへの適応
+
+ブランドごとの動作は `~/.ntnroute/brands.json` にあります — エンジンが知らないベンダーへの対応や、組み込みの上書き（ファームウェアの変更含む）はこのファイルの編集で行えます。1エントリで十分です：
+
+```json
+{
+  "zte": {
+    "paging": "terminal length 0",
+    "config_enter": "configure terminal",
+    "config_leave": "end",
+    "save_lines": ["write memory"],
+    "config_show": "show running-config",
+    "hostname_show": "show running-config | include hostname",
+    "hostname_field": "hostname",
+    "err_pattern": "(^%|Invalid input)"
+  }
+}
+```
+
+フィールド：`paging`、`secret_cmd`、`config_enter`、`config_leave`、`save_lines`（配列）、`save_delay`、`config_show`、`hostname_show`、`hostname_field`（`hostname`|`sysname`|`host-name`|`colon`）、`err_pattern`（grep -E）、`negate_prefix`（`rollback_gen` が使用）。プロファイルのない未知のブランドは Cisco 風のジェネリック既定値を使い、保存ステップを省略します。インストーラはあなたの `brands.json` を上書きしません。
+
 ## インストール
 
 要件：`bash`、`jq`、`ssh`（OpenSSH）のあるLinux/macOS。

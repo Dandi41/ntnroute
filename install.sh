@@ -22,6 +22,14 @@ install -m 700 "$REPO_DIR/ntn" "$NTN_HOME/ntn"
 ln -sfn "$NTN_HOME/ntn" "$BIN_DIR/ntn"
 ok "engine installed: $NTN_HOME/ntn (symlinked as $BIN_DIR/ntn)"
 
+# brand profiles: ship the default once, never overwrite user edits
+if [ -f "$NTN_HOME/brands.json" ]; then
+  ok "brands.json kept (user-managed): $NTN_HOME/brands.json"
+else
+  install -m 600 "$REPO_DIR/brands.json" "$NTN_HOME/brands.json"
+  ok "brands.json installed: $NTN_HOME/brands.json"
+fi
+
 case ":$PATH:" in
   *":$BIN_DIR:"*) ;;
   *) echo "NOTE: $BIN_DIR is not in your PATH. Add it, e.g.:"

@@ -11,6 +11,7 @@
 set -o pipefail
 
 NTN_HOME="${NTN_HOME:-$HOME/.ntnroute}"
+BRANDS_FILE="$NTN_HOME/brands.json"
 DB="$NTN_HOME/devices.json"
 BACKUP_DIR="$NTN_HOME/backups"
 LOCK_FILE="$NTN_HOME/.lock"
@@ -69,14 +70,20 @@ norm_type()  { case "${1,,}" in router) echo Router;; switch) echo Switch;; olt)
 
 is_exec_brand() { [ "$1" = "Mikrotik" ]; }
 
-paging_cmd()   { case "$1" in Huawei) echo "screen-length 0 temporary";; Aruba) echo "no page";; Juniper) echo "set cli screen-length 0";; Mikrotik|Fortinet) :;; *) echo "terminal length 0";; esac; }
-secret_cmd()   { case "$1" in Huawei) echo super;; Fortinet) :;; *) echo enable;; esac; }
-config_enter() { case "$1" in Juniper) echo configure;; Huawei) echo "system-view";; Mikrotik|Fortinet) :;; *) echo "configure terminal";; esac; }
-config_leave() { case "$1" in Juniper) :;; Huawei) echo return;; Mikrotik|Fortinet) :;; *) echo end;; esac; }
-save_lines()   { case "$1" in Huawei) echo save; echo Y;; Juniper) echo commit; echo "exit configuration-mode";; Mikrotik|Fortinet) :;; *) echo "write memory";; esac; }
-save_delay()   { case "$1" in Juniper) echo 15;; *) echo 4;; esac; }
+# ---- brand profiles: brands.json overrides/extends the built-in tables ----
+brand_profile() { [ -f "$BRANDS_FILE" ] && jq -e --arg b "${1,,}" '(.[$b] | type == "object")' "$BRANDS_FILE" >/dev/null 2>&1; }
+brand_has()     { brand_profile "$1" && jq -e --arg b "${1,,}" --arg k "$2" '.[$b] | has($k)' "$BRANDS_FILE" >/dev/null 2>&1; }
+brand_get()     { jq -r --arg b "${1,,}" --arg k "$2" '(.[$b][$k] // "")' "$BRANDS_FILE" 2>/dev/null; }
+
+paging_cmd()   { if brand_has "$1" paging; then brand_get "$1" paging; return; fi; case "$1" in Huawei) echo "screen-length 0 temporary";; Aruba) echo "no page";; Juniper) echo "set cli screen-length 0";; Mikrotik|Fortinet) :;; *) echo "terminal length 0";; esac; }
+secret_cmd()   { if brand_has "$1" secret_cmd; then brand_get "$1" secret_cmd; return; fi; case "$1" in Huawei) echo super;; Fortinet) :;; *) echo enable;; esac; }
+config_enter() { if brand_has "$1" config_enter; then brand_get "$1" config_enter; return; fi; case "$1" in Juniper) echo configure;; Huawei) echo "system-view";; Mikrotik|Fortinet) :;; *) echo "configure terminal";; esac; }
+config_leave() { if brand_has "$1" config_leave; then brand_get "$1" config_leave; return; fi; case "$1" in Juniper) :;; Huawei) echo return;; Mikrotik|Fortinet) :;; *) echo end;; esac; }
+save_lines()   { if brand_has "$1" save_lines; then brand_get "$1" save_lines | jq -r 'if type=="array" then .[] else . end'; return; fi; case "$1" in Huawei) echo save; echo Y;; Juniper) echo commit; echo "exit configuration-mode";; Mikrotik|Fortinet) :;; *) echo "write memory";; esac; }
+save_delay()   { if brand_has "$1" save_delay; then brand_get "$1" save_delay; return; fi; case "$1" in Juniper) echo 15;; *) echo 4;; esac; }
 
 config_cmd_show() { # full config pull command
+  if brand_has "$1" config_show; then brand_get "$1" config_show; return; fi
   case "$1" in
     Mikrotik) echo "/export";;
     Huawei)   echo "display current-configuration";;
@@ -86,6 +93,7 @@ config_cmd_show() { # full config pull command
   esac
 }
 hostname_cmd_show() { # hostname pull command
+  if brand_has "$1" hostname_show; then brand_get "$1" hostname_show; return; fi
   case "$1" in
     Mikrotik) echo "/system identity print";;
     Huawei)   echo "display current-configuration | include sysname";;
@@ -97,6 +105,7 @@ hostname_cmd_show() { # hostname pull command
 
 # per-brand error patterns (used with grep -E)
 err_pattern() {
+  if brand_has "$1" err_pattern; then brand_get "$1" err_pattern; return; fi
   case "$1" in
     Mikrotik) echo '^(invalid value|no such item|syntax error|expected |bad command|ambiguous|failure:|script error|\s+error:)';;
     Huawei)   echo '(^%|^\s*(Error|Unrecognized|Wrong parameter|Incomplete command))';;
@@ -218,11 +227,18 @@ pull_hostname() { # ip port user pass secret brand -> stdout hostname ('' on fai
     build_exec_plan "$brand" "$secret" "$plan" "$(hostname_cmd_show "$brand")"
     run_session "$ip" "$port" "$user" "$pass" "$plan" "$out" "$(plan_timeout "$plan")" || true
     rm -f "$plan"
-    case "$brand" in
-      Huawei)   hn=$(extract_cmd_output "$out" "$(hostname_cmd_show "$brand")" | awk 'tolower($1)=="sysname"{print $2; exit}');;
-      Juniper)  hn=$(extract_cmd_output "$out" "$(hostname_cmd_show "$brand")" | awk '$3=="host-name"{print $4; exit}');;
-      Fortinet) hn=$(extract_cmd_output "$out" "$(hostname_cmd_show "$brand")" | awk -F': *' 'tolower($1)=="hostname"{print $2; exit}');;
-      *)        hn=$(extract_cmd_output "$out" "$(hostname_cmd_show "$brand")" | awk 'tolower($1)=="hostname"{print $2; exit}');;
+    local hf=""; brand_has "$brand" hostname_field && hf=$(brand_get "$brand" hostname_field)
+    case "$hf" in
+      sysname)   hn=$(extract_cmd_output "$out" "$(hostname_cmd_show "$brand")" | awk 'tolower($1)=="sysname"{print $2; exit}');;
+      host-name) hn=$(extract_cmd_output "$out" "$(hostname_cmd_show "$brand")" | awk '$3=="host-name"{print $4; exit}');;
+      colon)     hn=$(extract_cmd_output "$out" "$(hostname_cmd_show "$brand")" | awk -F': *' 'tolower($1)=="hostname"{print $2; exit}');;
+      hostname)  hn=$(extract_cmd_output "$out" "$(hostname_cmd_show "$brand")" | awk 'tolower($1)=="hostname"{print $2; exit}');;
+      *) case "$brand" in
+        Huawei)   hn=$(extract_cmd_output "$out" "$(hostname_cmd_show "$brand")" | awk 'tolower($1)=="sysname"{print $2; exit}');;
+        Juniper)  hn=$(extract_cmd_output "$out" "$(hostname_cmd_show "$brand")" | awk '$3=="host-name"{print $4; exit}');;
+        Fortinet) hn=$(extract_cmd_output "$out" "$(hostname_cmd_show "$brand")" | awk -F': *' 'tolower($1)=="hostname"{print $2; exit}');;
+        *)        hn=$(extract_cmd_output "$out" "$(hostname_cmd_show "$brand")" | awk 'tolower($1)=="hostname"{print $2; exit}');;
+      esac;;
     esac
   fi
   rm -f "$out"
@@ -262,6 +278,9 @@ cmd_add() {
   [[ $ip =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] || die "invalid IP: $ip"
   [[ $port =~ ^[0-9]+$ ]] || die "port must be a number: $port"
   brand=$(norm_brand "$brand"); type=$(norm_type "$type")
+  case "$brand" in Cisco|Huawei|Aruba|Arista|Ruijie|Juniper|Mikrotik|Fortinet) ;; *)
+    brand_profile "$brand" || echo "NOTE: brand '$brand' is not built-in — generic Cisco-like defaults apply; add a profile in $BRANDS_FILE to customize." ;;
+  esac
   local dup; dup=$(jq -r --arg ip "$ip" '.devices[] | select(.ip==$ip) | .id' "$DB")
   [ -z "$dup" ] || die "IP $ip already registered (id $dup). Remove it first: ntn remove <number>"
 
@@ -549,6 +568,10 @@ apply_config() { # id script_file reason -> 0 on success
     rm -f "$cfile"
   else
     local plan; plan=$(mktemp "$TMPBASE/ntn.plan.XXXXXX")
+    local s skip_save=""
+    case "$brand" in Cisco|Huawei|Aruba|Arista|Ruijie|Juniper|Mikrotik|Fortinet) ;; *)
+      brand_profile "$brand" || { skip_save=1; echo "NOTE: unknown brand '$brand' — no save command sent (running-config only). Add save_lines in $BRANDS_FILE if the device needs one."; } ;;
+    esac
     {
       printf '4\t\n'
       if [ -n "$secret" ] && [ -n "$(secret_cmd "$brand")" ]; then printf '2\t%s\n' "$(secret_cmd "$brand")"; printf '2\t%s\n' "$secret"; fi
@@ -560,8 +583,7 @@ apply_config() { # id script_file reason -> 0 on success
         printf '1\t%s\n' "$line"
       done < "$script"
       printf '2\t%s\n' "$(config_leave "$brand")"
-      local s
-      while IFS= read -r s; do [ -n "$s" ] && printf '%s\t%s\n' "$(save_delay "$brand")" "$s"; done < <(save_lines "$brand")
+      if [ -z "$skip_save" ]; then while IFS= read -r s; do [ -n "$s" ] && printf '%s\t%s\n' "$(save_delay "$brand")" "$s"; done < <(save_lines "$brand"); fi
       printf '3\texit\n'
       if [ -n "$secret" ]; then printf '2\texit\n'; fi
       printf '2\t\n'

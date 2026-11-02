@@ -31,6 +31,27 @@ bash + awk; solo las compuertas de auditoría opcionales (`cfg_audit.py`,
 
 La criptografía legacy (imágenes Cisco antiguas) está soportada: `diffie-hellman-group14-sha1`, `ssh-rsa`, `aes128-cbc`, `hmac-sha1` se negocian cuando hace falta.
 
+## Adaptarse a nuevos fabricantes
+
+El comportamiento por marca vive en `~/.ntnroute/brands.json` — edítalo para soportar un fabricante que el motor no conoce, o para sobrescribir uno integrado (cambios de firmware incluidos). Una entrada basta:
+
+```json
+{
+  "zte": {
+    "paging": "terminal length 0",
+    "config_enter": "configure terminal",
+    "config_leave": "end",
+    "save_lines": ["write memory"],
+    "config_show": "show running-config",
+    "hostname_show": "show running-config | include hostname",
+    "hostname_field": "hostname",
+    "err_pattern": "(^%|Invalid input)"
+  }
+}
+```
+
+Campos: `paging`, `secret_cmd`, `config_enter`, `config_leave`, `save_lines` (array), `save_delay`, `config_show`, `hostname_show`, `hostname_field` (`hostname`|`sysname`|`host-name`|`colon`), `err_pattern` (grep -E), `negate_prefix` (usado por `rollback_gen`). Las marcas desconocidas sin perfil usan valores genéricos tipo Cisco y se saltan el paso de guardado. El instalador nunca sobrescribe tu `brands.json`.
+
 ## Instalación
 
 Requisitos: Linux/macOS con `bash`, `jq`, `ssh` (OpenSSH).
