@@ -72,10 +72,11 @@ Do not delete immediately. `ntn list` → ask the user for the row number → `n
 
 ### Troubleshooting
 1. `ntn list` / `ntn show <ref>` for context.
-2. `ntn exec <ref> 'show ip interface brief' 'show ip route' ...` — read the real condition.
-3. Web research on syntax/best practices for the brand is allowed.
-4. Propose the fix + script, show the 5-block plan (plan+reason, config, rollback, verification, verdict gate), request approval.
-5. After success, clean up artifacts (scratch files in `$TMPDIR`, no logs left on the device).
+2. `ntn audit pending` first — a config/rollback attempt with no verdict means a session died mid-apply; `ntn audit failed` shows what broke. `ntn audit config 50` gives the change history for one device's timeline.
+3. `ntn exec <ref> 'show ip interface brief' 'show ip route' ...` — read the real condition.
+4. Web research on syntax/best practices for the brand is allowed.
+5. Propose the fix + script, show the 5-block plan (plan+reason, config, rollback, verification, verdict gate), request approval.
+6. After success, clean up artifacts (scratch files in `$TMPDIR`, no logs left on the device).
 
 ### Config change (full workflow)
 ```bash
