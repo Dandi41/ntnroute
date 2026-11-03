@@ -11,7 +11,7 @@ SSH-basierte Network-Device-Engine für KI-Agenten: ein kompaktes Geräte-Invent
 - **Config-Backup** — `ntn sync` zieht die Running-Config ins Inventar und in eine Backup-Datei mit Zeitstempel.
 - **Freigabepflichtige Config-Änderungen** — `ntn config` führt aus: Snapshot vor der Änderung → anwenden → speichern → Post-Check (jede Skriptzeile muss in der neuen Konfiguration erscheinen) → Inventar-Update. Gerät vor der Änderung nicht erreichbar? Abbruch. Gerät verwirft eine Zeile? Fehler wird gemeldet, das Inventar bleibt unangetastet.
 - **Rollback** — jede Änderung legt einen Checkpoint an; `ntn rollback` wendet das gespeicherte Rückgängig-Skript an.
-- **Audit-Trail** — `ntn audit` zeigt die letzten Operationen.
+- **Audit-Trail** — jeder Config-/Rollback-Vorgang wird *vor* dem Zugriff auf das Gerät protokolliert (`config-pending`) und dann abgeschlossen: `config-ok`/`config-failed`/`config-aborted` plus ein `config-started`-Marker für die Akte. Die `ntn audit`-Filter dienen Troubleshooting und Security-Review: `pending` (Vorgänge ganz ohne Ergebnis — Prozess mitten im Apply beendet), `failed`, `config`, `all`.
 
 Die Engine besteht nur aus bash + jq + OpenSSH — kein Python, kein Agent, kein
 Daemon. Die Hilfsskripte (`triage`, `rollback_gen`, `ios_session.sh`) sind
@@ -81,6 +81,9 @@ ntn ping 1              # ICMP-Check
 ntn exec 1 'show ip interface brief' 'show ip route'
 ntn sync all            # Running-Config aller Geräte abziehen
 ntn audit 10            # die letzten 10 Operationen
+ntn audit pending       # Config-/Rollback-Vorgänge OHNE Ergebnis (Prozess im Apply beendet)
+ntn audit failed        # alle Fehler, neueste zuletzt
+ntn audit config 50     # Config- + Rollback-Lebenszyklus (pending/started/ok/failed/aborted)
 ```
 
 Eine Config-Änderung läuft immer: Plan → Freigabe → Anwenden → Verifizieren. Das mitgelieferte Skill `network-change-management` erzwingt die Freigabe-Schranke und erzeugt das Rollback-Skript, bevor irgendetwas das Gerät berührt.

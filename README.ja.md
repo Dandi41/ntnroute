@@ -11,7 +11,7 @@ AIエージェント向けのSSHベース・ネットワーク機器エンジン
 - **コンフィグバックアップ** — `ntn sync` がランニングコンフィグをインベントリとタイムスタンプ付きバックアップファイルに保存します。
 - **ゲート付き設定変更** — `ntn config` は次を実行します：変更前スナップショット → 適用 → 保存 → ポストチェック（スクリプトの全行が新コンフィグに現れること） → インベントリ更新。変更前にデバイスに到達できない場合は中断。デバイスが行を拒否した場合は失敗を報告し、インベントリは変更しません。
 - **ロールバック** — 変更ごとにチェックポイントを保存。`ntn rollback` で取り消しスクリプトを適用します。
-- **監査ログ** — `ntn audit` が直近の操作を表示します。
+- **監査ログ** — config/rollback の試行はデバイスに触れる*前*に記録され（`config-pending`）、その後確定します：`config-ok`/`config-failed`/`config-aborted` と、記録用の `config-started` マーカー。`ntn audit` のフィルタはトラブルシュートとセキュリティ監査向け：`pending`（判定が一切ない試行 — apply 中にプロセスが停止）、`failed`、`config`、`all`。
 
 エンジンは bash + jq + OpenSSH のみ。Pythonもエージェントもデーモンも不要です。
 ヘルパースクリプト（`triage`、`rollback_gen`、`ios_session.sh`）も bash + awk。
@@ -81,6 +81,9 @@ ntn ping 1              # ICMPチェック
 ntn exec 1 'show ip interface brief' 'show ip route'
 ntn sync all            # 全デバイスのランニングコンフィグを取得
 ntn audit 10            # 直近10操作
+ntn audit pending       # 判定が一切ない config/rollback 試行（apply 中にプロセス停止）
+ntn audit failed        # すべての失敗（新しい順）
+ntn audit config 50     # config + rollback ライフサイクル（pending/started/ok/failed/aborted）
 ```
 
 設定変更は常に：計画 → 承認 → 適用 → 検証。同梱の `network-change-management` スキルが承認ゲートを強制し、デバイスに触れる前にロールバックスクリプトを生成します。

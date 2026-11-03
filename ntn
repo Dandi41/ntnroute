@@ -30,7 +30,8 @@ SSH_OPTS=(
   -o NumberOfPasswordPrompts=1
 )
 
-die() { echo "ERROR: $*" >&2; exit 1; }
+PENDING_AUDIT=""   # set while a config apply is in flight; flushed as config-aborted by die()
+die() { if [ -n "$PENDING_AUDIT" ]; then local p="$PENDING_AUDIT"; PENDING_AUDIT=""; audit_settle; audit "config-aborted" "$p" 2>/dev/null; fi; echo "ERROR: $*" >&2; exit 1; }
 umask 077
 command -v jq  >/dev/null 2>&1 || die "jq not found"
 command -v ssh >/dev/null 2>&1 || die "ssh not found"
@@ -55,6 +56,14 @@ db_write() { # filter [jq-args...] ; atomic write
 }
 
 audit() { db_write '.audit = (.audit + [{ts:(now|todate), action:$a, detail:$d}])[-500:]' --arg a "$1" --arg d "$2"; }
+# Downgrade the newest unsettled config/rollback attempt to "<kind>-started":
+# the entry stays in the trail (with its original start time) but no longer
+# counts as orphaned. Filter `pending` then means only attempts with no verdict
+# at all — a process killed mid-apply.
+audit_settle() {
+  db_write '([.audit | to_entries[] | select(.value.action=="config-pending" or .value.action=="rollback-pending")] | last) as $e
+            | if $e == null then . else .audit[$e.key].action = ($e.value.action | sub("pending$"; "started")) end'
+}
 
 resolve_ref() { # ref = display-number | id | ip | hostname -> print id
   jq -r --arg ref "$1" '[.devices[] | select((.id|tostring)==$ref or .ip==$ref or ((.hostname|ascii_downcase)==($ref|ascii_downcase)))] | .[0].id // empty' "$DB"
@@ -597,13 +606,13 @@ apply_config() { # id script_file reason -> 0 on success
   fi
 
   if auth_failed "$out"; then
-    rm -f "$out"; audit "config-failed" "$hostname ($ip): session dropped / auth failed"
+    rm -f "$out"; audit "config-failed" "$hostname ($ip): session dropped / auth failed"; PENDING_AUDIT=""; audit_settle
     die "session dropped or auth failed during apply. Check the device manually; pre-change config saved at $precfg"
   fi
   # exit != 0 in RouterOS exec-mode means a command was rejected (syntax/invalid value),
   # not a dropped session — fall through to error detection below so the message is accurate.
   if [ $rc -ne 0 ] && ! is_exec_brand "$brand"; then
-    rm -f "$out"; audit "config-failed" "$hostname ($ip): session dropped during apply (exit $rc)"
+    rm -f "$out"; audit "config-failed" "$hostname ($ip): session dropped during apply (exit $rc)"; PENDING_AUDIT=""; audit_settle
     die "session dropped during apply (exit $rc). Check the device manually; pre-change config saved at $precfg"
   fi
   local errors
@@ -632,11 +641,11 @@ apply_config() { # id script_file reason -> 0 on success
     db_write '(.devices[] | select(.id==$id)).config_list = $cfg
               | (.devices[] | select(.id==$id)).last_sync = (now|todate)' \
              --argjson id "$id" --rawfile cfg "$newcfg"
-    audit "config-ok" "$hostname ($ip): $reason"
+    audit "config-ok" "$hostname ($ip): $reason"; PENDING_AUDIT=""; audit_settle
     echo "STATUS: SUCCESS — config_list updated"
     return 0
   else
-    audit "config-failed" "$hostname ($ip): $reason"
+    audit "config-failed" "$hostname ($ip): $reason"; PENDING_AUDIT=""; audit_settle
     echo "STATUS: FAILED — config_list NOT changed. Pre-change config: $precfg"
     return 1
   fi
@@ -655,7 +664,7 @@ cmd_config() {
   [ -n "$ref" ] && [ -n "$script" ] || die "usage: ntn config <ref> --script <file> [--rollback <file>] [--reason <text>]"
   [ -n "$reason" ] || reason="(no reason given)"
   local id; id=$(resolve_ref "$ref"); [ -n "$id" ] || die "device not found: $ref"
-  local hostname; hostname=$(device_by_id "$id" | jq -r '.hostname')
+  local hostname ip; hostname=$(device_by_id "$id" | jq -r '.hostname'); ip=$(device_by_id "$id" | jq -r '.ip')
   local ts; ts=$(date +%Y%m%d-%H%M%S)
   local rbfile="$BACKUP_DIR/${hostname}-${ts}-rollback.cmd"
 
@@ -665,6 +674,9 @@ cmd_config() {
   else
     : > "$rbfile"
   fi
+
+  PENDING_AUDIT="$hostname ($ip): $reason — script: $script ($(grep -cve '^\s*$' -e '^!' "$script" 2>/dev/null || echo 0) lines)"
+  audit "config-pending" "$PENDING_AUDIT"
 
   if apply_config "$id" "$script" "$reason"; then
     if [ -n "$rollback" ]; then
@@ -692,9 +704,11 @@ cmd_rollback() {
   local rbtmp; rbtmp=$(mktemp "$TMPBASE/ntn.rb.XXXXXX")
   printf '%s\n' "$rb" > "$rbtmp"
   echo "Running rollback for $hostname ..."
+  PENDING_AUDIT="$hostname (rollback): restoring check_point script ($(grep -cve '^\s*$' "$rbtmp" 2>/dev/null || echo 0) lines)"
+  audit "rollback-pending" "$PENDING_AUDIT"
   if apply_config "$id" "$rbtmp" "ROLLBACK"; then
     db_write '(.devices[] | select(.id==$id)).check_point = ""' --argjson id "$id"
-    audit "rollback" "$hostname"
+    audit "rollback" "$hostname"; PENDING_AUDIT=""; audit_settle
     echo "STATUS: ROLLBACK SUCCESS — check_point cleared"
   else
     rm -f "$rbtmp"
@@ -712,9 +726,22 @@ cmd_checkpoints() {
   jq -r --arg h "$hostname" '[.checkpoints[] | select(.hostname==$h)][-10:][] | "  \(.ts) — \(.reason)\n    rollback file: \(.rollback_file)"' "$DB"
 }
 
-cmd_audit() {
-  local n=${1:-20}
-  jq -r --argjson n "$n" '.audit[-$n:][] | "\(.ts)  \(.action)  \(.detail)"' "$DB"
+cmd_audit() { # ntn audit [N | pending|failed|config|all] [N]
+  local filter="" n=20
+  case "${1:-}" in
+    "") ;;
+    *[!0-9]*) filter=$1; [ -n "${2:-}" ] && n=$2 ;;
+    *) n=$1 ;;
+  esac
+  local row='.[-$n:][] | "\(.ts)  \(.action)  \(.detail)"'
+  case "$filter" in
+    "")      jq -r --argjson n "$n" "[.audit[]] | $row" "$DB";;
+    pending) jq -r --argjson n "$n" --arg re '^(config-pending|rollback-pending)$' "[.audit[] | select(.action | test(\$re))] | $row" "$DB";;
+    failed)  jq -r --argjson n "$n" --arg re 'failed$' "[.audit[] | select(.action | test(\$re))] | $row" "$DB";;
+    config)  jq -r --argjson n "$n" --arg re '^(config-|rollback)' "[.audit[] | select(.action | test(\$re))] | $row" "$DB";;
+    all)     jq -r --argjson n "$n" "[.audit[]] | $row" "$DB";;
+    *) die "unknown audit filter: $filter (use a number, or: pending | failed | config | all)" ;;
+  esac
 }
 
 usage() {
@@ -732,7 +759,11 @@ ntn — NTnRoute.AI device engine
                                              pre snapshot -> apply -> verify -> update DB
   ntn rollback <ref>                         apply the check_point script
   ntn checkpoints <ref>                      checkpoint history
-  ntn audit [N]                              last N audit entries (default 20)
+  ntn audit [N|pending|failed|config|all] [N]  audit trail; filters for tshoot/security review:
+                                             pending = attempts with NO verdict at all
+                                             (process killed mid-apply; completed ones show as
+                                             config-started/rollback-started), failed = all failures,
+                                             config = config+rollback lifecycle
 
 Brands: Cisco, Huawei, Aruba, Arista, Ruijie, Juniper, Mikrotik, Fortinet.
 Mikrotik -> exec-mode (ssh -T, /export, no write memory).

@@ -11,7 +11,7 @@ Engine perangkat jaringan berbasis SSH untuk AI agent: inventaris device, ekseku
 - **Backup config** — `ntn sync` menarik running config ke inventaris + file backup bertimestamp.
 - **Perubahan config bergerbang** — `ntn config` menjalankan: snapshot pra-perubahan → apply → save → post-check (setiap baris script harus muncul di config baru) → update inventaris. Device tak terjangkau sebelum perubahan? Abort. Device menolak satu baris? Dilaporkan gagal, inventaris tidak disentuh.
 - **Rollback** — setiap perubahan menyimpan checkpoint; `ntn rollback` menerapkan script pembatalnya.
-- **Jejak audit** — `ntn audit` menampilkan operasi terakhir.
+- **Jejak audit** — setiap percobaan config/rollback dicatat *sebelum* menyentuh device (`config-pending`), lalu disettle: `config-ok`/`config-failed`/`config-aborted` + penanda `config-started` untuk riwayat. Filter `ntn audit` untuk troubleshooting dan audit keamanan: `pending` (percobaan tanpa verdict sama sekali — proses mati di tengah apply), `failed`, `config`, `all`.
 
 Engine hanya bash + jq + OpenSSH — tanpa Python, tanpa agent, tanpa daemon.
 Skrip pembantu (`triage`, `rollback_gen`, `ios_session.sh`) juga bash + awk;
@@ -81,6 +81,9 @@ ntn ping 1              # cek ICMP
 ntn exec 1 'show ip interface brief' 'show ip route'
 ntn sync all            # tarik running-config semua device
 ntn audit 10            # 10 operasi terakhir
+ntn audit pending       # percobaan config/rollback TANPA verdict (proses mati di tengah apply)
+ntn audit failed        # semua kegagalan, terbaru di akhir
+ntn audit config 50     # siklus hidup config + rollback (pending/started/ok/failed/aborted)
 ```
 
 Perubahan config selalu: rencana → persetujuan → apply → verifikasi. Skill `network-change-management` memaksa gerbang persetujuan dan membuat script rollback sebelum apa pun menyentuh device.

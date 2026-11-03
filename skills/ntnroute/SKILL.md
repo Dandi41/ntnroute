@@ -51,7 +51,7 @@ ntn sync <ref|all>                         # pull running-config -> config_list 
 ntn config <ref> --script <file> [--rollback <file>] [--reason '<text>']
 ntn rollback <ref>
 ntn checkpoints <ref>
-ntn audit [N]
+ntn audit [N|pending|failed|config|all] [N]
 ```
 
 `<ref>` = display number, `id`, `ip`, or `hostname` (case-insensitive).

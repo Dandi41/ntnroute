@@ -11,7 +11,7 @@ SSH-based network device engine for AI agents: a small device inventory, safe CL
 - **Config backup** — `ntn sync` pulls the running config into the inventory and a timestamped backup file.
 - **Gated config changes** — `ntn config` performs: pre-change snapshot → apply → save → post-check (every script line must appear in the new config) → inventory update. Unreachable device before the change? It aborts. Device rejects a line? It reports failure and leaves the inventory untouched.
 - **Rollback** — every change stores a checkpoint; `ntn rollback` applies the stored undo script.
-- **Audit trail** — `ntn audit` shows the last operations.
+- **Audit trail** — every config/rollback attempt is logged *before* it touches the device (`config-pending`), then settled: `config-ok`/`config-failed`/`config-aborted` + a `config-started` marker for the record. `ntn audit` filters serve troubleshooting and security review: `pending` (attempts with no verdict at all — a process killed mid-apply), `failed`, `config`, `all`.
 
 The engine is bash + jq + OpenSSH only — no Python, no agents, no daemons. The
 helper scripts (`triage`, `rollback_gen`, `ios_session.sh`) are bash + awk too;
@@ -80,6 +80,9 @@ ntn ping 1              # ICMP check
 ntn exec 1 'show ip interface brief' 'show ip route'
 ntn sync all            # pull running-config for every device
 ntn audit 10            # last 10 operations
+ntn audit pending       # config/rollback attempts with NO verdict (process killed mid-apply)
+ntn audit failed        # every failure, newest last
+ntn audit config 50     # config + rollback lifecycle (pending/started/ok/failed/aborted)
 ```
 
 A config change is always: plan → approval → apply → verify. The bundled `network-change-management` skill enforces the approval gate and generates the rollback script before anything touches the device.

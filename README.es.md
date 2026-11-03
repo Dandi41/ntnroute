@@ -11,7 +11,7 @@ Motor de gestión de dispositivos de red por SSH para agentes de IA: un pequeño
 - **Copia de seguridad** — `ntn sync` guarda la configuración en ejecución en el inventario y en un archivo de respaldo con marca de tiempo.
 - **Cambios de configuración con puerta** — `ntn config` ejecuta: snapshot previo → aplicar → guardar → post-verificación (cada línea del script debe aparecer en la nueva configuración) → actualización del inventario. ¿Dispositivo inaccesible antes del cambio? Aborta. ¿El dispositivo rechaza una línea? Se reporta el fallo y el inventario queda intacto.
 - **Rollback** — cada cambio guarda un checkpoint; `ntn rollback` aplica el script de deshacer almacenado.
-- **Registro de auditoría** — `ntn audit` muestra las últimas operaciones.
+- **Registro de auditoría** — cada intento de config/rollback se registra *antes* de tocar el dispositivo (`config-pending`) y luego se cierra: `config-ok`/`config-failed`/`config-aborted` más un marcador `config-started` para el historial. Los filtros de `ntn audit` sirven para troubleshooting y revisión de seguridad: `pending` (intentos sin veredicto alguno — proceso muerto a mitad del apply), `failed`, `config`, `all`.
 
 El motor es solo bash + jq + OpenSSH — sin Python, sin agentes, sin demonios.
 Los scripts auxiliares (`triage`, `rollback_gen`, `ios_session.sh`) también son
@@ -81,6 +81,9 @@ ntn ping 1              # comprobación ICMP
 ntn exec 1 'show ip interface brief' 'show ip route'
 ntn sync all            # obtiene la running-config de todos los dispositivos
 ntn audit 10            # últimas 10 operaciones
+ntn audit pending       # intentos de config/rollback SIN veredicto (proceso muerto en el apply)
+ntn audit failed        # todos los fallos, los más recientes al final
+ntn audit config 50     # ciclo de vida de config + rollback (pending/started/ok/failed/aborted)
 ```
 
 Un cambio de configuración es siempre: plan → aprobación → aplicar → verificar. La skill `network-change-management` impone la puerta de aprobación y genera el script de rollback antes de tocar el dispositivo.
