@@ -71,19 +71,18 @@ cd ntnroute
 
 ## クイックスタート
 
+NTnRoute エンジンの使い方が分からない場合は、agent に `ntn` または `ntn help` と入力してください。agent が利用可能な公開メニューを表示し、適切なワークフローを案内します。
+
 ```bash
 # デバイスを登録（まず接続をテスト。失敗なら保存しない）
 ntn add 10.0.0.5 22 admin S3cr3t! Router Cisco enablepass123
 
-ntn list                # 番号付きインベントリ
-ntn show 1              # 詳細 + 保存済みコンフィグ
-ntn ping 1              # ICMPチェック
-ntn exec 1 'show ip interface brief' 'show ip route'
-ntn sync all            # 全デバイスのランニングコンフィグを取得
-ntn audit 10            # 直近10操作
-ntn audit pending       # 判定が一切ない config/rollback 試行（apply 中にプロセス停止）
-ntn audit failed        # すべての失敗（新しい順）
-ntn audit config 50     # config + rollback ライフサイクル（pending/started/ok/failed/aborted）
+# 公開インベントリおよび設定概要メニュー
+ntn list
+ntn add <IP> <Port> <User> <Pass> <Type> <Brand> [Secret]
+ntn remove <number|id>
+ntn show <ref>
+ntn sync <ref|all>
 ```
 
 設定変更は常に：計画 → 承認 → 適用 → 検証。同梱の `network-change-management` スキルが承認ゲートを強制し、デバイスに触れる前にロールバックスクリプトを生成します。

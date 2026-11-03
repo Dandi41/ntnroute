@@ -70,19 +70,18 @@ The installer:
 
 ## Quick start
 
+If you are unsure how to use the NTnRoute engine, type `ntn` or `ntn help` to your agent. The agent will show the available public menu and guide the appropriate workflow.
+
 ```bash
 # register a device (connection is tested first; nothing saved on failure)
 ntn add 10.0.0.5 22 admin S3cr3t! Router Cisco enablepass123
 
-ntn list                # numbered inventory
-ntn show 1              # details + stored config
-ntn ping 1              # ICMP check
-ntn exec 1 'show ip interface brief' 'show ip route'
-ntn sync all            # pull running-config for every device
-ntn audit 10            # last 10 operations
-ntn audit pending       # config/rollback attempts with NO verdict (process killed mid-apply)
-ntn audit failed        # every failure, newest last
-ntn audit config 50     # config + rollback lifecycle (pending/started/ok/failed/aborted)
+# public inventory and configuration-summary menu
+ntn list
+ntn add <IP> <Port> <User> <Pass> <Type> <Brand> [Secret]
+ntn remove <number|id>
+ntn show <ref>
+ntn sync <ref|all>
 ```
 
 A config change is always: plan → approval → apply → verify. The bundled `network-change-management` skill enforces the approval gate and generates the rollback script before anything touches the device.

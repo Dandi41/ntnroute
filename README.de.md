@@ -71,19 +71,18 @@ Der Installer:
 
 ## Schnellstart
 
+Wenn du unsicher bist, wie du die NTnRoute-Engine verwendest, schreibe deinem Agenten `ntn` oder `ntn help`. Der Agent zeigt das verfügbare öffentliche Menü und führt durch den passenden Ablauf.
+
 ```bash
 # Gerät registrieren (Verbindung wird zuerst getestet; bei Fehler wird nichts gespeichert)
 ntn add 10.0.0.5 22 admin S3cr3t! Router Cisco enablepass123
 
-ntn list                # nummeriertes Inventar
-ntn show 1              # Details + gespeicherte Config
-ntn ping 1              # ICMP-Check
-ntn exec 1 'show ip interface brief' 'show ip route'
-ntn sync all            # Running-Config aller Geräte abziehen
-ntn audit 10            # die letzten 10 Operationen
-ntn audit pending       # Config-/Rollback-Vorgänge OHNE Ergebnis (Prozess im Apply beendet)
-ntn audit failed        # alle Fehler, neueste zuletzt
-ntn audit config 50     # Config- + Rollback-Lebenszyklus (pending/started/ok/failed/aborted)
+# öffentliches Inventar- und Konfigurationsübersichtsmenü
+ntn list
+ntn add <IP> <Port> <User> <Pass> <Type> <Brand> [Secret]
+ntn remove <number|id>
+ntn show <ref>
+ntn sync <ref|all>
 ```
 
 Eine Config-Änderung läuft immer: Plan → Freigabe → Anwenden → Verifizieren. Das mitgelieferte Skill `network-change-management` erzwingt die Freigabe-Schranke und erzeugt das Rollback-Skript, bevor irgendetwas das Gerät berührt.

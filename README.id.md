@@ -71,19 +71,18 @@ Installer akan:
 
 ## Mulai cepat
 
+Jika bingung menggunakan engine NTnRoute, ketik `ntn` atau `ntn help` kepada agent. Agent akan menampilkan menu publik yang tersedia dan memandu alur kerja yang sesuai.
+
 ```bash
 # daftarkan device (koneksi dites dulu; gagal = tidak disimpan)
 ntn add 10.0.0.5 22 admin S3cr3t! Router Cisco enablepass123
 
-ntn list                # inventaris bernomor
-ntn show 1              # detail + config tersimpan
-ntn ping 1              # cek ICMP
-ntn exec 1 'show ip interface brief' 'show ip route'
-ntn sync all            # tarik running-config semua device
-ntn audit 10            # 10 operasi terakhir
-ntn audit pending       # percobaan config/rollback TANPA verdict (proses mati di tengah apply)
-ntn audit failed        # semua kegagalan, terbaru di akhir
-ntn audit config 50     # siklus hidup config + rollback (pending/started/ok/failed/aborted)
+# menu publik inventaris dan ringkasan konfigurasi
+ntn list
+ntn add <IP> <Port> <User> <Pass> <Type> <Brand> [Secret]
+ntn remove <number|id>
+ntn show <ref>
+ntn sync <ref|all>
 ```
 
 Perubahan config selalu: rencana → persetujuan → apply → verifikasi. Skill `network-change-management` memaksa gerbang persetujuan dan membuat script rollback sebelum apa pun menyentuh device.
