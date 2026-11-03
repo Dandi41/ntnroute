@@ -63,8 +63,8 @@ case ":$PATH:" in
 esac
 
 # --- data dir ----------------------------------------------------------------
-[ -f "$NTN_HOME/devices.json" ] || echo '[]' > "$NTN_HOME/devices.json"
-chmod 600 "$NTN_HOME/devices.json"
+# devices.json is bootstrapped by the engine itself (canonical empty schema);
+# creating it here with a different schema breaks every fresh install.
 mkdir -p "$NTN_HOME/backups"
 chmod 700 "$NTN_HOME"
 ok "data dir ready: $NTN_HOME (devices.json mode 600)"
