@@ -11,6 +11,11 @@
 set -o pipefail
 
 NTN_HOME="${NTN_HOME:-$HOME/.ntnroute}"
+# self-provisioned binaries (jq.exe installed by install.sh on Windows)
+case ":$PATH:" in
+  *":$NTN_HOME/bin:"*) ;;
+  *) PATH="$NTN_HOME/bin:$PATH" ;;
+esac
 BRANDS_FILE="$NTN_HOME/brands.json"
 DB="$NTN_HOME/devices.json"
 BACKUP_DIR="$NTN_HOME/backups"

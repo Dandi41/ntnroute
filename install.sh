@@ -10,18 +10,41 @@ HERMES_SKILLS="${HERMES_SKILLS:-$HOME/.hermes/skills/networking}"
 err() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 ok()  { printf 'OK: %s\n' "$*"; }
 
+OS="$(uname -s)"
+case "$OS" in
+  MINGW*|MSYS*|CYGWIN*) WINDOWS=1 ;;
+  *)                    WINDOWS=0 ;;
+esac
+
 # --- dependencies -----------------------------------------------------------
+# Windows: jq is auto-provisioned into $NTN_HOME/bin (prepended to PATH by the
+# engine). bash/ssh/timeout all ship with Git for Windows — that is the only
+# prerequisite the user must install by hand.
+if ! command -v jq >/dev/null 2>&1; then
+  if [ "$WINDOWS" = 1 ] && command -v curl >/dev/null 2>&1; then
+    mkdir -p "$NTN_HOME/bin"
+    curl -L -sS -o "$NTN_HOME/bin/jq.exe" \
+      https://github.com/jqlang/jq/releases/latest/download/jq-windows-amd64.exe \
+      || err "failed to download jq — install it manually: https://jqlang.github.io/jq/download/"
+    chmod +x "$NTN_HOME/bin/jq.exe" 2>/dev/null || true
+    ok "jq installed automatically: $NTN_HOME/bin/jq.exe"
+  else
+    err "missing dependency: jq (install it, then re-run)"
+  fi
+fi
 for dep in jq ssh; do
   command -v "$dep" >/dev/null 2>&1 || err "missing dependency: $dep (install it, then re-run)"
 done
 command -v timeout >/dev/null 2>&1 || command -v gtimeout >/dev/null 2>&1 \
-  || err "missing dependency: timeout (GNU coreutils) — macOS: brew install coreutils"
+  || err "missing dependency: timeout (GNU coreutils) — macOS: brew install coreutils — Windows: install Git for Windows"
 ok "dependencies found (bash, jq, ssh)"
 
 # --- engine ------------------------------------------------------------------
 mkdir -p "$NTN_HOME" "$BIN_DIR"
 install -m 700 "$REPO_DIR/ntn" "$NTN_HOME/ntn"
-ln -sfn "$NTN_HOME/ntn" "$BIN_DIR/ntn"
+if ! ln -sfn "$NTN_HOME/ntn" "$BIN_DIR/ntn" 2>/dev/null || [ ! -e "$BIN_DIR/ntn" ]; then
+  cp -f "$NTN_HOME/ntn" "$BIN_DIR/ntn" && ok "copy used instead of symlink (Windows/MSYS)"
+fi
 ok "engine installed: $NTN_HOME/ntn (symlinked as $BIN_DIR/ntn)"
 
 # brand profiles: ship the default once, never overwrite user edits
