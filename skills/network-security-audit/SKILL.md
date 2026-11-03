@@ -64,15 +64,15 @@ config rules from `cfg_audit.py`.
 ### 2b. Change history — who touched this device, and did anything hang?
 
 ```bash
-ntn audit config 50    # config + rollback lifecycle: pending/started/ok/failed/aborted
+ntn audit config 50    # device timeline: pending/started/ok/failed/aborted
 ntn audit pending      # attempts with NO verdict — an apply that died mid-flight
 ```
 
 This is evidence, not background: an unexplained change, a config pushed
 outside the approval gate, or an interrupted apply (device state may not match
 the inventory's `config_list`) belongs in the report as a finding with its
-timestamp. Treat a `config-aborted`/`config-started` pair as "attempted, unknown
-device state" — verify the live config before trusting the inventory.
+timestamp. Interpretation table and recovery steps: the audit vocabulary lives
+in `network-troubleshooting` → `references/audit-trail.md`.
 
 ### 3. CVE + version research (if requested or a suspicious version shows up)
 

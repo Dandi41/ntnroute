@@ -71,12 +71,13 @@ Secret is only for brands that need level-2 verification (Cisco `enable secret`,
 Do not delete immediately. `ntn list` → ask the user for the row number → `ntn remove <number>`.
 
 ### Troubleshooting
-1. `ntn list` / `ntn show <ref>` for context.
-2. `ntn audit pending` first — a config/rollback attempt with no verdict means a session died mid-apply; `ntn audit failed` shows what broke. `ntn audit config 50` gives the change history for one device's timeline.
-3. `ntn exec <ref> 'show ip interface brief' 'show ip route' ...` — read the real condition.
-4. Web research on syntax/best practices for the brand is allowed.
-5. Propose the fix + script, show the 5-block plan (plan+reason, config, rollback, verification, verdict gate), request approval.
-6. After success, clean up artifacts (scratch files in `$TMPDIR`, no logs left on the device).
+Device outage or unexplained behaviour → **use the `network-troubleshooting`
+skill** (OSI ladder, `triage`, per-vendor commands). Do not improvise a
+diagnosis here.
+The one thing to check first, because it is this engine's own record:
+`ntn audit pending` (a config/rollback attempt with no verdict = a session died
+mid-apply, device state unknown) and `ntn audit failed`. Details and the
+recovery procedure live in that skill's `references/audit-trail.md`.
 
 ### Config change (full workflow)
 ```bash
