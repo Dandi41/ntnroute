@@ -36,7 +36,7 @@ umask 077
 command -v jq  >/dev/null 2>&1 || die "jq not found"
 command -v ssh >/dev/null 2>&1 || die "ssh not found"
 TIMEOUT_BIN="$(command -v timeout || command -v gtimeout || true)"
-[ -n "$TIMEOUT_BIN" ] || die "timeout not found (GNU coreutils) — macOS: brew install coreutils"
+[ -n "$TIMEOUT_BIN" ] || die "timeout not found (GNU coreutils) — macOS: brew install coreutils — Windows: install Git for Windows (includes timeout)"
 
 mkdir -p "$BACKUP_DIR"
 [ -f "$DB" ] || { echo '{"devices":[],"checkpoints":[],"audit":[],"next_id":1}' > "$DB"; chmod 600 "$DB"; }
@@ -351,7 +351,10 @@ cmd_ping() {
   [ $# -ge 1 ] || die "usage: ntn ping <ref>"
   local id; id=$(resolve_ref "$1"); [ -n "$id" ] || die "device not found: $1"
   local ip; ip=$(device_by_id "$id" | jq -r '.ip')
-  ping -c 3 -W 2 "$ip" 2>&1 | tail -2
+  case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*) ping -n 3 -w 2000 "$ip" 2>&1 | tail -2 ;;
+    *)                    ping -c 3 -W 2 "$ip" 2>&1 | tail -2 ;;
+  esac
 }
 
 run_device_commands() { # ip port user pass secret brand out_file timeout cmd... -> rc

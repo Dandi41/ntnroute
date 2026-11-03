@@ -1,0 +1,7 @@
+# Force LF — bash scripts with CRLF break under Git Bash on Windows
+* text=auto
+*.sh text eol=lf
+ntn text eol=lf
+rollback_gen text eol=lf
+*.md text
+*.json text
