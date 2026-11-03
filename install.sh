@@ -27,6 +27,7 @@ if ! command -v jq >/dev/null 2>&1; then
       https://github.com/jqlang/jq/releases/latest/download/jq-windows-amd64.exe \
       || err "failed to download jq — install it manually: https://jqlang.github.io/jq/download/"
     chmod +x "$NTN_HOME/bin/jq.exe" 2>/dev/null || true
+    case ":$PATH:" in *":$NTN_HOME/bin:"*) ;; *) PATH="$NTN_HOME/bin:$PATH" ;; esac
     ok "jq installed automatically: $NTN_HOME/bin/jq.exe"
   else
     err "missing dependency: jq (install it, then re-run)"
