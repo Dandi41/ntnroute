@@ -55,7 +55,13 @@ below SSH.
 
 ```bash
 ntn sync <ref>
+ntn audit pending     # config/rollback attempts with no verdict = a session died mid-apply
+ntn audit failed      # what broke, and when
 ```
+
+An unexplained audit entry (`ntn audit config 50`) often *is* the cause: a change
+applied by someone else, an apply that was interrupted. Read it before blaming
+the transport.
 
 Keep the backup file as a baseline. If the device cannot be reached over SSH,
 use `ntn ping` plus checks from another device that is still alive.
@@ -126,6 +132,12 @@ fails, check the syntax in the vendor's official documentation.
   physical/link problem that must be fixed before any configuration change.
 
 ## Verification
+
+The audit trail is the first evidence step, not an afterthought: every config
+or rollback attempt is written before it touches the device and settled
+afterwards, so `ntn audit pending` is empty when nothing was left hanging and
+non-empty exactly when a process died mid-apply — verified against a mock
+(success, verify-failure, abort, rollback) and on the live lab devices.
 
 Verified on the lab Cisco router (IOS 15.4) and the lab RouterOS device
 (RouterOS 7.18.2):

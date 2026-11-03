@@ -61,6 +61,19 @@ The script runs a read-only command battery per brand via `ntn exec`
 reports findings per category. Exit 1 = a CRIT exists. `--config` adds the
 config rules from `cfg_audit.py`.
 
+### 2b. Change history — who touched this device, and did anything hang?
+
+```bash
+ntn audit config 50    # config + rollback lifecycle: pending/started/ok/failed/aborted
+ntn audit pending      # attempts with NO verdict — an apply that died mid-flight
+```
+
+This is evidence, not background: an unexplained change, a config pushed
+outside the approval gate, or an interrupted apply (device state may not match
+the inventory's `config_list`) belongs in the report as a finding with its
+timestamp. Treat a `config-aborted`/`config-started` pair as "attempted, unknown
+device state" — verify the live config before trusting the inventory.
+
 ### 3. CVE + version research (if requested or a suspicious version shows up)
 
 `--cve` prints the detected OS version plus the research procedure. Run the
@@ -121,6 +134,13 @@ remediation → `network-change-management` gates and applies it →
   "why is it slow".
 
 ## Verification
+
+Config/rollback history is part of the evidence base: `ntn audit config 50`
+gives the device timeline (pending → started → ok/failed/aborted) and
+`ntn audit pending` lists only attempts with no verdict at all. The engine
+writes the `-pending` entry *before* touching the device, so the trail covers
+interrupted applies too — verified against a mock (success, verify-failure,
+abort, rollback) and on the live lab devices.
 
 Proven on the lab RouterOS device (RouterOS 7.18.2) and the lab Cisco router
 (IOS 15.4(2)T4):
