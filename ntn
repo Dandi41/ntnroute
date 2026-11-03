@@ -36,6 +36,8 @@ SSH_OPTS=(
 )
 
 PENDING_AUDIT=""   # set while a config apply is in flight; flushed as config-aborted by die()
+TRANSACTION_PRE=""
+TRANSACTION_FINAL=""
 die() { if [ -n "$PENDING_AUDIT" ]; then local p="$PENDING_AUDIT"; PENDING_AUDIT=""; audit_settle; audit "config-aborted" "$p" 2>/dev/null; fi; echo "ERROR: $*" >&2; exit 1; }
 umask 077
 command -v jq  >/dev/null 2>&1 || die "jq not found"
@@ -60,8 +62,56 @@ db_write() { # filter [jq-args...] ; atomic write
   fi
 }
 
-audit() { db_write '.audit = (.audit + [{ts:(now|todate), action:$a, detail:$d}])[-500:]' --arg a "$1" --arg d "$2"; }
-# Downgrade the newest unsettled config/rollback attempt to "<kind>-started":
+audit() {
+  local now cutoff
+  now=$(date +%s)
+  cutoff=$((now - 105*86400))
+  db_write '.audit = ([.audit[] | select(.action | test("^(config-|rollback)")) | select((.action | test("pending$")) or ((.ts | fromdateiso8601) >= $cutoff))])[-500:]' --argjson cutoff "$cutoff"
+  db_write '.audit += [{ts:(now|todate), action:$a, detail:$d}]' --arg a "$1" --arg d "$2"
+}
+# ---------- backup archive --------------------------------------------------
+safe_host() { printf '%s' "$1" | tr -c 'A-Za-z0-9._-' '_' ; }
+month_for() { date -d "$1" +%Y-%m 2>/dev/null || date -j -f '%Y%m%d-%H%M%S' "$1" +%Y-%m 2>/dev/null || date +%Y-%m; }
+backup_root_for() { printf '%s/%s' "$BACKUP_DIR" "$(safe_host "$1")"; }
+backup_month_for() { printf '%s/%s' "$(backup_root_for "$1")" "$(month_for "$2")"; }
+month_back() {
+  local y=${1%-*} m=${1#*-} n=${2:-0}
+  m=$((10#$m))
+  while [ "$n" -gt 0 ]; do m=$((m-1)); if [ "$m" -eq 0 ]; then m=12; y=$((y-1)); fi; n=$((n-1)); done
+  printf '%04d-%02d' "$y" "$m"
+}
+retain_backups() {
+  local host=$1 root="$BACKUP_DIR/$(safe_host "$1")" dir month pair idx year current m0 m1 m2 seenyears=""
+  [ -d "$root" ] || return 0
+  current=$(date +%Y-%m); m0=$current; m1=$(month_back "$current" 1); m2=$(month_back "$current" 2)
+  while read -r dir; do
+    month=${dir%/}; month=${month##*/}; idx=0
+    while read -r pair; do
+      [ -n "$pair" ] || continue
+      [ -s "$dir/$pair.cfg" ] && [ -s "$dir/$pair.rollback.cmd" ] || continue
+      if [ "$month" = "$m0" ] || [ "$month" = "$m1" ] || [ "$month" = "$m2" ]; then
+        idx=$((idx+1)); [ "$idx" -le 4 ] || rm -f "$dir/$pair.cfg" "$dir/$pair.rollback.cmd"
+      else
+        year=${month%%-*}
+        case " $seenyears " in *" $year "*) rm -f "$dir/$pair.cfg" "$dir/$pair.rollback.cmd";; *) seenyears="$seenyears $year";; esac
+      fi
+    done < <(find "$dir" -maxdepth 1 -type f -name '*.cfg' -printf '%f\n' 2>/dev/null | sed 's/\.cfg$//' | sort -r)
+    rmdir "$dir" 2>/dev/null || true
+  done < <(find "$root" -mindepth 1 -maxdepth 1 -type d -printf '%p/\n' 2>/dev/null | sort -r)
+  rmdir "$root" 2>/dev/null || true
+}
+archive_pair() {
+  local host=$1 stamp=$2 finalcfg=$3 rollback=$4 dir pair tmpcfg tmprb
+  [ -s "$finalcfg" ] && [ -s "$rollback" ] || return 1
+  dir=$(backup_month_for "$host" "$stamp"); mkdir -p "$dir"; chmod 700 "$dir"
+  pair="$(date -d "$stamp" +%Y%m%d-%H%M%S 2>/dev/null || date +%Y%m%d-%H%M%S)-$$"
+  tmpcfg=$(mktemp "$dir/.${pair}.cfg.XXXXXX"); tmprb=$(mktemp "$dir/.${pair}.rollback.XXXXXX")
+  cp "$finalcfg" "$tmpcfg" && cp "$rollback" "$tmprb" || { rm -f "$tmpcfg" "$tmprb"; return 1; }
+  mv "$tmpcfg" "$dir/$pair.cfg" && mv "$tmprb" "$dir/$pair.rollback.cmd" || return 1
+  chmod 600 "$dir/$pair.cfg" "$dir/$pair.rollback.cmd"
+  retain_backups "$host"
+  printf '%s/%s' "$dir" "$pair"
+}
 # the entry stays in the trail (with its original start time) but no longer
 # counts as orphaned. Filter `pending` then means only attempts with no verdict
 # at all — a process killed mid-apply.
@@ -266,7 +316,7 @@ cmd_list() {
   local n; n=$(jq '.devices|length' "$DB")
   if [ "$n" -eq 0 ]; then echo "(no devices yet — add one with: ntn add <IP> <Port> <Username> <Password> <Type> <Brand> [Secret])"; return 0; fi
   echo "Devices ($n):"
-  jq -r '.devices | to_entries[] | "\(.key+1). [id \(.value.id)] \(.value.hostname) — \(.value.ip):\(.value.port) (\(.value.brand) \(.value.type)) | last sync: \(.value.last_sync // "-")"' "$DB"
+  jq -r '.devices | to_entries[] | "\(.key+1). \(.value.hostname) — \(.value.ip):\(.value.port) — \(.value.type) — \(.value.brand)"' "$DB"
 }
 
 cmd_show() {
@@ -308,13 +358,12 @@ cmd_add() {
   rc=$?
   if [ $rc -ne 0 ] || auth_failed "$probe"; then
     grep -E "Permission denied|no matching|refused|timed out|No route" "$probe" | head -3 >&2
-    rm -f "$cfgfile" "$probe"; audit "add-failed" "$ip (auth/connection failed)"
+    rm -f "$cfgfile" "$probe"
     die "connection/auth failed (exit $rc). Device NOT saved."
   fi
   mv "$probe" "$cfgfile"
   if [ ! -s "$cfgfile" ]; then
     rm -f "$cfgfile"
-    audit "add-failed" "$ip (empty config)"
     die "device config is empty — device NOT saved."
   fi
 
@@ -333,7 +382,6 @@ cmd_add() {
   cp "$cfgfile" "$bk"
   db_write '.devices += [$d] | .next_id += 1' --argjson d "$dev"
   rm -f "$cfgfile"
-  audit "add" "$hostname ($ip) $brand $type"
   echo "OK: device added"
   echo "  id       : $id"
   echo "  hostname : $hostname"
@@ -347,7 +395,6 @@ cmd_remove() {
   local id; id=$(resolve_number "$1"); [ -n "$id" ] || die "no device with number/id $1"
   local label; label=$(device_by_id "$id" | jq -r '.hostname + " (" + .ip + ")"')
   db_write '.devices = [.devices[] | select(.id != $id)]' --argjson id "$id"
-  audit "remove" "$label"
   echo "OK: device removed → $label"
 }
 
@@ -415,15 +462,14 @@ sync_one() { # id
   pull_config "$ip" "$port" "$user" "$pass" "$secret" "$brand" "$cfgfile"
   rc=$?
   if [ $rc -ne 0 ] || auth_failed "$cfgfile"; then
-    rm -f "$cfgfile"; echo "FAILED sync $hostname ($ip): connection/auth"; audit "sync-failed" "$hostname ($ip)"; return 1
+    rm -f "$cfgfile"; echo "FAILED sync $hostname ($ip): connection/auth"; return 1
   fi
-  if [ ! -s "$cfgfile" ]; then rm -f "$cfgfile"; echo "FAILED sync $hostname: empty config output"; audit "sync-failed" "$hostname ($ip)"; return 1; fi
+  if [ ! -s "$cfgfile" ]; then rm -f "$cfgfile"; echo "FAILED sync $hostname: empty config output"; return 1; fi
   cp "$cfgfile" "$BACKUP_DIR/${hostname}-$(date +%Y%m%d-%H%M%S).cfg"
   db_write '(.devices[] | select(.id==$id)).config_list = $cfg
             | (.devices[] | select(.id==$id)).last_sync = (now|todate)' \
            --argjson id "$id" --rawfile cfg "$cfgfile"
   rm -f "$cfgfile"
-  audit "sync" "$hostname ($ip)"
   echo "OK sync $hostname ($ip)"
 }
 
@@ -558,11 +604,12 @@ apply_config() { # id script_file reason -> 0 on success
   hostname=$(jq -r '.hostname' <<<"$dev")
   local ts; ts=$(date +%Y%m%d-%H%M%S)
 
-  # 1) pre-change snapshot (mandatory; abort on failure)
-  local precfg="$BACKUP_DIR/${hostname}-${ts}-pre.cfg"
+  # 1) pre-change snapshot (mandatory; transaction-only, never a retained archive)
+  local precfg; precfg=$(mktemp "$TMPBASE/ntn.pre.XXXXXX")
+  TRANSACTION_PRE="$precfg"; TRANSACTION_FINAL=""
   pull_config "$ip" "$port" "$user" "$pass" "$secret" "$brand" "$precfg" || true
   if [ ! -s "$precfg" ] || auth_failed "$precfg"; then
-    rm -f "$precfg"
+    rm -f "$precfg"; TRANSACTION_PRE=""
     die "failed to pull pre-change config (aborting for safety)"
   fi
   echo "Snapshot pre-change: $precfg"
@@ -631,7 +678,8 @@ apply_config() { # id script_file reason -> 0 on success
   fi
 
   # 3) post-check: pull the new config, verify the script contents are present
-  local newcfg="$BACKUP_DIR/${hostname}-${ts}-post.cfg"
+  local newcfg; newcfg=$(mktemp "$TMPBASE/ntn.post.XXXXXX")
+  TRANSACTION_FINAL="$newcfg"
   pull_config "$ip" "$port" "$user" "$pass" "$secret" "$brand" "$newcfg" || true
 
   MISSING=(); UNCHECKED=()
@@ -649,12 +697,12 @@ apply_config() { # id script_file reason -> 0 on success
     db_write '(.devices[] | select(.id==$id)).config_list = $cfg
               | (.devices[] | select(.id==$id)).last_sync = (now|todate)' \
              --argjson id "$id" --rawfile cfg "$newcfg"
-    audit "config-ok" "$hostname ($ip): $reason"; PENDING_AUDIT=""; audit_settle
-    echo "STATUS: SUCCESS — config_list updated"
+    echo "STATUS: SUCCESS — config_list updated (archive pending)"
     return 0
   else
     audit "config-failed" "$hostname ($ip): $reason"; PENDING_AUDIT=""; audit_settle
-    echo "STATUS: FAILED — config_list NOT changed. Pre-change config: $precfg"
+    rm -f "$precfg" "$newcfg"; TRANSACTION_PRE=""; TRANSACTION_FINAL=""
+    echo "STATUS: FAILED — config_list NOT changed"
     return 1
   fi
 }
@@ -688,17 +736,24 @@ cmd_config() {
 
   if apply_config "$id" "$script" "$reason"; then
     if [ -n "$rollback" ]; then
+      local archive
+      archive=$(archive_pair "$hostname" "$ts" "$TRANSACTION_FINAL" "$rbfile") || {
+        audit "config-failed" "$hostname ($ip): archive publication failed"; rm -f "$TRANSACTION_PRE" "$TRANSACTION_FINAL"; TRANSACTION_PRE=""; TRANSACTION_FINAL=""; die "config succeeded but backup archive publication failed";
+      }
       db_write '(.devices[] | select(.id==$id)).check_point = $rb' --argjson id "$id" --rawfile rb "$rbfile"
+      audit "config-ok" "$hostname ($ip): $reason"; PENDING_AUDIT=""; audit_settle
+      echo "Backup archive: $archive.cfg + $archive.rollback.cmd"
+      rbfile="$archive.rollback.cmd"
+    else
+      audit "config-ok" "$hostname ($ip): $reason (no rollback archive)"
+      echo "WARNING: no rollback script; no paired archive was created"
     fi
+    rm -f "$TRANSACTION_PRE" "$TRANSACTION_FINAL" "$rbfile"; TRANSACTION_PRE=""; TRANSACTION_FINAL=""
     db_write '.checkpoints = (.checkpoints + [{ts:(now|todate), hostname:$h, reason:$r, rollback_file:$f}])[-200:]' \
              --arg h "$hostname" --arg r "$reason" --arg f "$rbfile"
-    if [ -n "$rollback" ]; then
-      echo "Rollback script saved → check_point column + $rbfile"
-    else
-      echo "WARNING: no rollback script; only the pre-change snapshot in backups/"
-    fi
   else
-    die "apply failed — fix the script and retry, or restore manually from the pre-change snapshot in $BACKUP_DIR"
+    rm -f "$TRANSACTION_PRE" "$TRANSACTION_FINAL" "$rbfile"; TRANSACTION_PRE=""; TRANSACTION_FINAL=""
+    die "apply failed — fix the script and retry"
   fi
 }
 
