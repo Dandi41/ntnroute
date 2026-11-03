@@ -51,22 +51,29 @@ Ask the user: which device, what symptom, since when, who is affected.
 Run `ntn ping <ref>` first — if ICMP does not get through, the problem is
 below SSH.
 
-### 2. Pull snapshot and read the audit trail
+### 2. Pull snapshot
 
 ```bash
 ntn sync <ref>
+```
+
+Keep the backup file as a baseline. If the device cannot be reached over SSH,
+use `ntn ping` plus checks from another device that is still alive.
+
+### 2b. Check the audit trail (additional evidence — only when the symptom could be change-related)
+
+```bash
 ntn audit pending     # attempts with NO verdict = a session died mid-apply
 ntn audit failed      # what broke, and when
+ntn audit config 50   # the device's change timeline
 ```
 
 An unexplained entry often *is* the cause: a change applied by someone else, an
 apply that was interrupted, a device that drifted from the inventory. An
 unsettled `config-pending` means the device state is UNKNOWN — verify the live
-config before trusting `config_list`. Full vocabulary, filters and the recovery
-procedure: `references/audit-trail.md`.
-
-Keep the backup file as a baseline. If the device cannot be reached over SSH,
-use `ntn ping` plus checks from another device that is still alive.
+config before trusting `config_list`. Full vocabulary, filters, retention and
+the recovery procedure: `references/audit-trail.md`. Skip this step for pure
+link/physical symptoms — the OSI ladder below settles those.
 
 ### 3. Collect diagnostic data
 

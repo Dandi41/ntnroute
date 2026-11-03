@@ -61,18 +61,17 @@ The script runs a read-only command battery per brand via `ntn exec`
 reports findings per category. Exit 1 = a CRIT exists. `--config` adds the
 config rules from `cfg_audit.py`.
 
-### 2b. Change history — who touched this device, and did anything hang?
+### 2b. Check the change log (additional evidence)
 
 ```bash
 ntn audit config 50    # device timeline: pending/started/ok/failed/aborted
 ntn audit pending      # attempts with NO verdict — an apply that died mid-flight
 ```
 
-This is evidence, not background: an unexplained change, a config pushed
-outside the approval gate, or an interrupted apply (device state may not match
-the inventory's `config_list`) belongs in the report as a finding with its
-timestamp. Interpretation table and recovery steps: the audit vocabulary lives
-in `network-troubleshooting` → `references/audit-trail.md`.
+Changes made outside the approval gate, or an apply that never reported a
+verdict (device state may not match the inventory's `config_list`), are findings
+in their own right — record them with their timestamp. Vocabulary and recovery
+steps: `network-troubleshooting` → `references/audit-trail.md`.
 
 ### 3. CVE + version research (if requested or a suspicious version shows up)
 
