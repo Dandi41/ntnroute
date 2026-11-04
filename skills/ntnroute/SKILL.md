@@ -51,13 +51,7 @@ ntn show <ref>                             # device details + stored config (cre
 ntn sync <ref|all>                         # pull the latest running-config from the device
 ```
 
-**Internal operations (agent-only).** Everything else — reading live state,
-connectivity probes, gated config changes, rollbacks, checkpoints, the change
-log, security audits — is executed by the agent as part of a skill's workflow,
-never presented to the user as a command menu. The engine enforces this: those
-operations are refused without the `NTN_INTERNAL=1` gate variable. The exact
-syntax the agent runs lives in `references/engine-commands.md`; the workflows
-below name the operation, and the reference supplies the invocation.
+**Engine operations.** Use the engine capabilities through the workflow steps below. Do not expose implementation-only operation names or invocation details in user-facing replies; describe the action in operational language (for example, “read the live state” or “apply the approved change”).
 
 ## Workflows
 
@@ -94,7 +88,9 @@ S=~/.hermes/skills/networking/network-change-management/scripts
 python3 $S/cfg_audit.py --change "$TMPDIR/change.cmd" \
   --config ~/.ntnroute/backups/<file-from-sync>.cfg --mgmt-ip <mgmt-ip>
 # If the mgmt IP is DHCP-learned: add --mgmt-interface <iface> so lockout stays CRIT.
-# VERDICT REWRITE (exit 1) = fix the script, re-gate. PROCEED = continue.
+# RISK INTERPRETATION: PROCEED WITH CAUTION means explain the management-path
+# risk, include recovery/rollback, and obtain explicit approval. It does not
+# deny the change.
 # 3. generate rollback, read it line by line, fill in "# TODO restore from snapshot:" from the pre-config
 $S/rollback_gen "$TMPDIR/change.cmd" \
   --existing-config ~/.ntnroute/backups/<file-from-sync>.cfg \

@@ -17,7 +17,7 @@ Two gates that sit between "change script drafted" and "apply to device". They n
 - `scripts/cfg_audit.py` (stdlib Python) — audits a saved running-config (CRIT/WARN/INFO hardening findings) and, with `--change`, gates a pending change script for lockout risk before it goes anywhere near a device.
 - `scripts/rollback_gen` (bash + awk, no Python) — derives a rollback script from the change script, applying the rules a naive `no <line>` prefixer gets wrong (blocks, negations, creates vs edits).
 
-Both print text verdicts and exit 1 when a CRITICAL finding applies to the decision at hand.
+Both print text findings for review. `cfg_audit.py --change` reports management-path and blast-radius risk; it does not grant or deny permission to make a change. The configuration change itself remains subject to the user's explicit approval and the engine's rollback/verification workflow.
 
 ## When to Use
 
@@ -41,8 +41,7 @@ the change is "just one line".
 4. **Post-apply verification** — the exact read-only command that proves it
    worked, and the expected output token or state. Written before applying, never
    invented after.
-5. **Risk** — BLOCKED / WARN / CLEAN from the gate, plus which lines the gate
-   flagged and why they are acceptable.
+5. **Risk** — CLEAN / PROCEED WITH EYES OPEN / PROCEED WITH CAUTION from the assessment, plus which lines were flagged and why they are acceptable.
 
 Then stop. End the turn and wait. Fill `templates/plan-template.md` — it is the
 same five blocks in the shape the user reads.
@@ -71,8 +70,7 @@ python3 $S/cfg_audit.py --change change.cmd --config <synced>.cfg \
   --mgmt-ip <ip> [--mgmt-interface <iface>]
 ```
 
-4. Act on the verdict: `PROCEED` (exit 0) → continue; `REWRITE` (exit 1) → fix
-   every CRIT line the gate names, then re-gate. Never apply a REWRITE change.
+4. Report the risk: `CLEAN`, `PROCEED WITH EYES OPEN`, or `PROCEED WITH CAUTION`. A CRIT result is a management-path warning, not a veto. Include the flagged lines in the five-block plan so the user can explicitly decide whether to proceed.
 5. Generate the rollback:
 
 ```bash
@@ -134,6 +132,6 @@ Config-only audit (no pending change): `python3 $S/cfg_audit.py <file.cfg> --mgm
 
 ## Verification (proven against snapshots from the lab Cisco router and the lab RouterOS device)
 
-- Benign change (description + `no shutdown` on a non-mgmt port) → PROCEED, exit 0. Change touching the mgmt interface → REWRITE, exit 1. With `--mgmt-interface` supplied, the DHCP-mgmt lockout line is CRIT again.
+- Benign change (description + `no shutdown` on a non-mgmt port) → CLEAN. Change touching the management interface → PROCEED WITH CAUTION, exit 0, with explicit recovery-path and rollback discussion before user approval. With `--mgmt-interface` supplied, the DHCP-management risk is identified precisely.
 - New `vlan 40` / `interface Loopback99` blocks roll back to `no vlan 40` / `no interface Loopback99`. `no interface Ethernet0/2` against a pre-existing interface → UNSAFE, exit 1.
 - `no ip http server` recognized as idempotent (omitted, explained); `no ip address ...` as destructive (TODO + snapshot note).

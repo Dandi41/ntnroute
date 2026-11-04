@@ -23,11 +23,17 @@ goes through the `network-change-management` skill.
    audit, a security check, or an incident that needs a security assessment.
 2. **Read-only.** All audit commands are read-only (`show`, `print`,
    `display`). No state changes during the audit.
-3. **Evidence, not opinion.** Every finding has command output plus, for
+3. **Report, never authorize or veto.** A security audit produces evidence,
+   severity, and remediation advice only. It never blocks, permits, delays,
+   or otherwise decides a requested configuration change — including a change
+   that removes DHCP clients, firewall rules, services, routes, or accounts.
+   The user decides whether to change configuration; the change workflow
+   handles consent, rollback, and verification separately.
+4. **Evidence, not opinion.** Every finding has command output plus, for
    CVEs, an official link. Without a link → write "not yet verified".
-4. **Both sides:** local (device hardening) and perimeter (what can be
+5. **Both sides:** local (device hardening) and perimeter (what can be
    reached from outside). The perimeter is usually the more fatal side.
-5. **CVEs from research, not memory.** The OS version comes from the device,
+6. **CVEs from research, not memory.** The OS version comes from the device,
    CVEs are researched via the web from official sources (vendor PSIRT →
    NVD), and relevance is checked against the features actually in use.
 

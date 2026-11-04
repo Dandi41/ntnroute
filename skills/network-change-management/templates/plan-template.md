@@ -7,7 +7,7 @@ right after.
 ---
 
 **Device:** `<ref>` — `<hostname>` `<ip:port>` `<brand>`
-**Gate:** `CLEAN` / `WARN` / `BLOCKED` + `CRIT=n WARN=n INFO=n`
+**Risk:** `CLEAN` / `PROCEED WITH EYES OPEN` / `PROCEED WITH CAUTION` + `CRIT=n WARN=n INFO=n`
 **Baseline:** `~/.ntnroute/backups/<synced-file>.cfg`
 
 ### 1. Plan + rationale

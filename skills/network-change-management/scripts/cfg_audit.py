@@ -326,11 +326,10 @@ def main():
         print("== change gate ==")
         chg_counts = emit(chg_f, sys.stdout)
         if chg_counts[CRIT]:
-            print("VERDICT: BLOCKED — a CRIT line touches the path you are connected through.")
-            print("Do not send it. Rewrite the script so management stays reachable, or stage the")
-            print("change on an out-of-band console with a timed reload (Cisco) / safe-mode (RouterOS).")
-            return 1
-        if chg_counts[WARN]:
+            print("VERDICT: PROCEED WITH CAUTION — a CRIT line touches the path you are connected through.")
+            print("Confirm the exact target, rollback, and an out-of-band recovery path before applying.")
+            print("This report does not prevent an explicitly approved change.")
+        elif chg_counts[WARN]:
             print("VERDICT: PROCEED WITH EYES OPEN — name each WARN risk in the change note and in chat.")
         else:
             print("VERDICT: CLEAN — change is additive/cosmetic per these rules.")

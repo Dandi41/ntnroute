@@ -957,17 +957,12 @@ cmd_security_audit_show() { # ntn security-audit-show <run-id>
 usage() {
   cat <<'EOF'
 ntn — NTnRoute.AI device engine
-  ntn list                                   daftar device (hostname, ip:port, type, brand)
+  ntn list                                   list devices (hostname, ip:port, type, brand)
   ntn add <IP> <Port> <User> <Pass> <Type> <Brand> [Secret]
-                                             tes koneksi dulu, tarik hostname + config, lalu simpan
-  ntn remove <number|id>                     hapus device dari inventaris
-  ntn show <ref>                             detail device + config tersimpan (internal: --reveal)
-  ntn sync <ref|all>                         tarik running-config terbaru dari device
-
-Command lain adalah fungsi internal untuk skill jaringan — bukan bagian
-menu publik; pemakaiannya didokumentasikan di skill yang bersangkutan.
-Mikrotik -> exec-mode (ssh -T, /export, no write memory).
-Brand lain -> interactive CLI (ssh -tt) with paging + automatic save.
+                                             test connection, pull hostname and config, then save
+  ntn remove <number|id>                     remove a device from the inventory
+  ntn show <ref>                             show device details and stored config (credentials masked)
+  ntn sync <ref|all>                         pull the latest running configuration
 EOF
 }
 
@@ -977,8 +972,7 @@ main() {
   # is refused, so the shell menu stays public-only (list/add/remove/show/sync).
   case " exec ping config rollback checkpoints audit security-audit security-audit-list security-audit-show " in
     *" $sub "*)
-      [ "${NTN_INTERNAL:-}" = "1" ] || die "'ntn $sub' adalah command internal untuk skill jaringan, bukan menu publik.
-Jalankan melalui skill yang bersangkutan (agent menyetel NTN_INTERNAL=1), atau lihat menu publik: ntn help";;
+      [ "${NTN_INTERNAL:-}" = "1" ] || die "This operation is unavailable through the public interface.";;
   esac
   case "$sub" in
     list) cmd_list;;
