@@ -22,6 +22,8 @@ Port of the n8n NTnRoute.AI workflow to Hermes. Persistence lives in a plain JSO
 
 Storage: `~/.ntnroute/devices.json` (mode 600). Backups: `~/.ntnroute/backups/`. Engine: `ntn` on `$PATH` (`~/.ntnroute/ntn`).
 
+DB schema reference: the repo's `examples/devices.example.json` is the authoritative shape of `devices.json` — top-level keys `next_id`, `devices[]`, `checkpoints[]`, `audit[]`, `security_audits[]`, and the exact field names inside each. Never invent fields or rename keys when reading or writing the DB; quote the example instead.
+
 ## Mandatory principles
 
 1. **Anti-hallucination.** Never invent IP/interface/VLAN/credential values. Check `ntn list` + `ntn show <ref>` first. Still missing → ask the user specifically before assembling a script. The inventory changes between sessions (devices are added/removed/replaced), so `ntn list` is the single source of truth — do not use old session notes, memory, or the test table in this skill as the list of active devices. The test table below is test history only, not an inventory.

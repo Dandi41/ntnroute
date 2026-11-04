@@ -54,6 +54,10 @@ Python（標準ライブラリのみ）を使うのは任意の監査ゲート�
 
 フィールド：`paging`、`secret_cmd`、`config_enter`、`config_leave`、`save_lines`（配列）、`save_delay`、`config_show`、`hostname_show`、`hostname_field`（`hostname`|`sysname`|`host-name`|`colon`）、`err_pattern`（grep -E）、`negate_prefix`（`rollback_gen` が使用）。プロファイルのない未知のブランドは Cisco 風のジェネリック既定値を使い、保存ステップを省略します。インストーラはあなたの `brands.json` を上書きしません。
 
+## デバイスデータベースの形式
+
+インベントリは `~/.ntnroute/devices.json` に保存されます（モード600、gitignore対象 — 本物のファイルをコミットしないでください）。エンジンは決まった形式を読み書きします：`next_id`、`devices[]`、`checkpoints[]`、`audit[]`、`security_audits[]`。プレースホルダーの認証情報で埋めた参照例は [`examples/devices.example.json`](examples/devices.example.json) を見てください — AIエージェントやスクリプトにはこのファイルを指し示し、独自の項目名をでっち上げないようにします。
+
 ## インストール
 
 要件：`bash`、`jq`、`ssh`（OpenSSH）のあるLinux/macOS、または Windows（Git for Windows 経由）。macOS は GNU coreutils（`brew install coreutils`）が必要です。

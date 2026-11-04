@@ -53,6 +53,10 @@ Per-brand behavior lives in `~/.ntnroute/brands.json` — edit it to support a v
 
 Fields: `paging`, `secret_cmd`, `config_enter`, `config_leave`, `save_lines` (array), `save_delay`, `config_show`, `hostname_show`, `hostname_field` (`hostname`|`sysname`|`host-name`|`colon`), `err_pattern` (grep -E), `negate_prefix` (used by `rollback_gen`). Unknown brands without a profile get generic Cisco-like defaults and skip the save step. The installer never overwrites your `brands.json`.
 
+## Device database format
+
+The inventory lives in `~/.ntnroute/devices.json` (mode 600, gitignored — never commit the real one). The engine reads and writes an exact shape: `next_id`, `devices[]`, `checkpoints[]`, `audit[]`, `security_audits[]`. See [`examples/devices.example.json`](examples/devices.example.json) for a filled-in reference with placeholder credentials — point any AI agent or script at that file so it writes the same field names instead of inventing its own.
+
 ## Install
 
 Requirements: Linux, macOS, or Windows (via Git for Windows) with `bash`, `jq`, `ssh` (OpenSSH). macOS needs GNU coreutils for `timeout` (`brew install coreutils`).

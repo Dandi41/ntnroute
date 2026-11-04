@@ -54,6 +54,10 @@ Perilaku per-brand ada di `~/.ntnroute/brands.json` — edit file itu untuk mend
 
 Field: `paging`, `secret_cmd`, `config_enter`, `config_leave`, `save_lines` (array), `save_delay`, `config_show`, `hostname_show`, `hostname_field` (`hostname`|`sysname`|`host-name`|`colon`), `err_pattern` (grep -E), `negate_prefix` (dipakai `rollback_gen`). Brand tak dikenal tanpa profil memakai default generik ala Cisco dan melewatkan langkah save. Installer tidak pernah menimpa `brands.json` milikmu.
 
+## Format database device
+
+Inventaris tersimpan di `~/.ntnroute/devices.json` (mode 600, gitignore — jangan pernah commit file aslinya). Engine membaca dan menulis bentuk yang pasti: `next_id`, `devices[]`, `checkpoints[]`, `audit[]`, `security_audits[]`. Lihat [`examples/devices.example.json`](examples/devices.example.json) sebagai referensi yang sudah terisi dengan kredensial contoh — arahkan AI agent atau script ke file itu agar menulis nama field yang sama, bukan mengarang sendiri.
+
 ## Instalasi
 
 Prasyarat: Linux, macOS, atau Windows (lewat Git for Windows) dengan `bash`, `jq`, `ssh` (OpenSSH). macOS butuh GNU coreutils untuk `timeout` (`brew install coreutils`).

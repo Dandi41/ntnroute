@@ -54,6 +54,10 @@ Das Verhalten pro Marke liegt in `~/.ntnroute/brands.json` — dort editieren, u
 
 Felder: `paging`, `secret_cmd`, `config_enter`, `config_leave`, `save_lines` (Array), `save_delay`, `config_show`, `hostname_show`, `hostname_field` (`hostname`|`sysname`|`host-name`|`colon`), `err_pattern` (grep -E), `negate_prefix` (von `rollback_gen` genutzt). Unbekannte Marken ohne Profil erhalten generische Cisco-ähnliche Defaults und überspringen den Save-Schritt. Der Installer überschreibt deine `brands.json` nie.
 
+## Format der Geräte-Datenbank
+
+Das Inventar liegt in `~/.ntnroute/devices.json` (Modus 600, gitignored — niemals die echte Datei committen). Die Engine liest und schreibt ein exaktes Format: `next_id`, `devices[]`, `checkpoints[]`, `audit[]`, `security_audits[]`. Siehe [`examples/devices.example.json`](examples/devices.example.json) als ausgefüllte Referenz mit Platzhalter-Zugangsdaten — verweise KI-Agents oder Skripte auf diese Datei, damit sie dieselben Feldnamen verwenden statt eigene zu erfinden.
+
 ## Installation
 
 Voraussetzungen: Linux, macOS oder Windows (über Git for Windows) mit `bash`, `jq`, `ssh` (OpenSSH). macOS benötigt GNU coreutils für `timeout` (`brew install coreutils`).
