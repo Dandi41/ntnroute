@@ -425,9 +425,31 @@ cmd_add() {
 cmd_remove() {
   [ $# -ge 1 ] || die "usage: ntn remove <number|id>  (see list: ntn list)"
   local id; id=$(resolve_number "$1"); [ -n "$id" ] || die "no device with number/id $1"
-  local label; label=$(device_by_id "$id" | jq -r '.hostname + " (" + .ip + ")"')
-  db_write '.devices = [.devices[] | select(.id != $id)]' --argjson id "$id"
-  echo "OK: device removed → $label"
+  local hostname ip label safe
+  hostname=$(device_by_id "$id" | jq -r '.hostname')
+  ip=$(device_by_id "$id" | jq -r '.ip')
+  label="$hostname ($ip)"
+  safe=$(safe_host "$hostname")
+
+  # A removal is a full erasure after the agent has obtained explicit chat
+  # confirmation. Keep no stale history that could be mistaken for a later
+  # device reusing the same hostname or IP.
+  rm -rf "$BACKUP_DIR/$safe"
+  rm -f "$BACKUP_DIR/$safe"-*.cfg "$BACKUP_DIR/$safe"-*-rollback.cmd
+
+  db_write '.devices = [.devices[] | select(.id != $id)]
+            | .checkpoints = [.checkpoints[] | select(.hostname != $h)]
+            | .audit = [.audit[] | select((.detail | contains($h) | not) and (.detail | contains($ip) | not))]
+            | .security_audits = [
+                .security_audits[]
+                | .devices = [.devices[] | select((.id != $id) and (.hostname != $h) and (.ip != $ip))]
+                | select(.devices | length > 0)
+                | .summary.devices = (.devices | length)
+                | .summary.complete = ([.devices[] | select(.status == "complete")] | length)
+                | .summary.unreachable = ([.devices[] | select(.status == "unreachable")] | length)
+                | .summary.critical_runs = ([.devices[] | select((.counts.CRITICAL // 0) > 0)] | length)
+              ]' --argjson id "$id" --arg h "$hostname" --arg ip "$ip"
+  echo "OK: device and all related records removed → $label"
 }
 
 # ---------- commands: ping / exec / sync ----------

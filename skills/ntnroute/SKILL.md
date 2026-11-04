@@ -65,7 +65,11 @@ Normalize Type/Brand capitalization yourself (router→Router, cisco→Cisco, ol
 Secret is only for brands that need level-2 verification (Cisco `enable secret`, Huawei `super`).
 
 ### Remove a device
-Do not delete immediately. `ntn list` → ask the user for the row number → `ntn remove <number>`.
+Resolve the target with `ntn list`, state its hostname and IP, then ask one
+explicit question before calling `ntn remove <number>`: **“Delete this device
+and all of its stored data (configuration backups, rollback files, checkpoints,
+audit history, and security-audit results)?”** Only a clear yes authorizes the
+removal. A removal is total: it does not leave historical artifacts behind.
 
 ### Troubleshooting
 1. `ntn list` / `ntn show <ref>` for context.
