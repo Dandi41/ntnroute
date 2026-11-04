@@ -104,9 +104,7 @@ $S/rollback_gen "$TMPDIR/change.cmd" \
 # 4. show the change + rollback to the user, ask permission, then apply through
 #    the engine's gated config operation (invocation: references/engine-commands.md)
 ```
-The engine performs: pre snapshot → apply → save → post-check → update `config_list` + `check_point` → publish the backup archive (`~/.ntnroute/backups/<host>/<YYYY-MM>/`, retention: max 4 per month, last 3 months + one yearly keeper). Success only when there are no device errors AND every script line appears in the new config.
-
-`no ...` lines are verified heuristically (they cannot be matched by grep) — after the apply, read the state back with the engine's exec operation and confirm each negated line took effect.
+The engine performs: pre snapshot → apply → save → refresh inventory snapshot/archive → retain rollback. `STATUS: APPLIED` means no device-side CLI error was detected; it is not functional validation. Immediately run the verification commands promised in the plan (read-only, no further approval) and report their real output.
 
 ## Test status
 
@@ -148,11 +146,7 @@ Per-brand behavior is data, not code: `~/.ntnroute/brands.json` entries override
 - RouterOS exec-mode is far more reliable than PTY: no banner, paging, or `[admin@host] >` prompt. Commands run sequentially from stdin, separated by newlines. `;` chains also work but one full command per line is easier to read.
 - **RouterOS always exits 0 even when a command fails.** Errors are detected from output patterns: `invalid value`, `no such item`, `syntax error`, `expected end of command`, `bad command name`, `ambiguous`, `failure:`. The engine has these patterns in `err_pattern`.
 - RouterOS exec-mode **does not keep context between lines**. The menu style `/interface ethernet` then `set [ find ... ]` fails (`expected end of command`) because each line runs as a standalone command. The engine normalizes scripts via `mt_normalize()`: pure path lines are merged into the next line as one full-path command. Write MikroTik scripts with the full path per line, or let the engine merge them — never rely on menu context.
-- **Destructive commands cannot be verified automatically.** `remove`/`unset`/`disable`/`reset` remove their own object, so the tokens inside them must NOT appear in the export. Positive-line verification would always fail. The engine marks them UNCHECKED = check manually. Do not read that as a failure.
-- **Empty values vanish from `/export verbose`.** `comment=""` produces no token, so it cannot be matched. The engine marks it UNCHECKED, not MISSING. A rollback that clears a comment will always show UNCHECKED=1 — normal.
-- RouterOS exec-mode returns **exit 1** when a command is rejected; an older engine message wrongly called this "session dropped". Fixed: auth/disconnect are detected separately, and exit!=0 in exec-mode is treated as a command error with the output content reported.
-- MikroTik post-check verification cannot use exact-line grep: `/export verbose` reorders arguments (alphabetically) and folds long lines with `\`. The engine uses `verify_mikrotik`: every `key=value` token in the script is searched as a substring of the export with spaces/quotes/backslashes stripped. Context lines without `=` (e.g. `/ip address`) go to the UNCHECKED list = normal.
-- MikroTik hostname from `/system identity print` → the `name:` field. **That name is the device identity, not a misread** — a device can have an identity like `office-router-1` regardless of its board model. Do not "fix" it to the model/board.
+- **Functional read-back is the only success criterion.** Choose show/print/display commands that prove the requested outcome (neighbor state, route, interface status, service state, policy counters, reachability). Do not infer success from the textual rendering of a configuration export.
 
 ### General
 - SSH uses the OpenSSH CLI, not paramiko/Python. Sessions use `ssh -tt` with a scheduled (delay-TAB command) plan via stdin; passwords go through `SSH_ASKPASS` + `SSH_ASKPASS_REQUIRE=force`.

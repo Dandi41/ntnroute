@@ -26,8 +26,8 @@ NTN_INTERNAL=1 ntn audit all 100      # everything, last 100
 |---|---|---|
 | `config-pending` / `rollback-pending` | Written before apply; **never settled** | The process died mid-apply — device state is UNKNOWN |
 | `config-started` / `rollback-started` | The same entry, settled later | An attempt happened at that timestamp; it reached a verdict |
-| `config-ok` | Applied and verified | Every script line reached the running-config |
-| `config-failed` | Rejected or unverified | Device error output is in the transcript; `config_list` unchanged |
+| `config-ok` | Device accepted the apply | Run the planned read-only checks to establish functional success |
+| `config-failed` | Device rejected commands or the session failed | Device error output or transport failure is in the transcript |
 | `config-aborted` | Died before/while applying | Pre-snapshot guard fired or the session was cut |
 | `rollback` | Rollback succeeded | `check_point` was consumed |
 | `rollback-failed` | Rollback apply rejected | The undo script did not land; snapshots are still in `~/.ntnroute/backups/` — investigate before retrying |
