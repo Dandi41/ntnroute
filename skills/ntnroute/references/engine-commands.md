@@ -1,10 +1,10 @@
-# Engine command reference (agent-facing)
+**Engine command reference (agent-facing)**
 
-This file holds the exact engine syntax. It is for the agent, not for the
-user: users get the public menu (`ntn help` = list/add/remove/show/sync);
-everything below is skill-owned and the engine refuses it without the
-`NTN_INTERNAL=1` gate variable. Skills describe these operations as workflow
-steps; when a step is approved, run the matching command with the prefix.
+This file holds exact engine syntax for operations that are not exposed in the
+public menu. It is for the agent, not for users: users get `ntn help` only.
+
+**Secret boundary:** no command may print stored credentials. There is no
+credential-reveal operation; do not add one.
 
 ```
 NTN_INTERNAL=1 ntn exec <ref> '<cmd>' ['<cmd2>' ...]   # CLI commands, transcript output
@@ -16,7 +16,6 @@ NTN_INTERNAL=1 ntn audit [N|pending|failed|config|all] [N]
 NTN_INTERNAL=1 ntn security-audit <ref|all> [--trigger explicit|quarterly]
 NTN_INTERNAL=1 ntn security-audit-list [N]
 NTN_INTERNAL=1 ntn security-audit-show <run-id>
-NTN_INTERNAL=1 ntn show <ref> --reveal                 # the ONLY way to print credentials
 ```
 
 `<ref>` = display number, `id`, `ip`, or `hostname` (case-insensitive);

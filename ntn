@@ -352,22 +352,17 @@ cmd_list() {
 }
 
 cmd_show() {
-  [ $# -ge 1 ] || die "usage: ntn show <ref> [--reveal]"
+  [ $# -eq 1 ] || die "usage: ntn show <ref>"
   local id; id=$(resolve_ref "$1"); [ -n "$id" ] || die "device not found: $1"
-  local reveal=0; [ "${2:-}" = "--reveal" ] && { [ "${NTN_INTERNAL:-}" = "1" ] || die "--reveal adalah flag internal (menampilkan kredensial) — dipakai melalui skill jaringan (NTN_INTERNAL=1)"; reveal=1; }
-  device_by_id "$id" | jq -r --argjson reveal "$reveal" '
+  device_by_id "$id" | jq -r '
     "hostname   : " + .hostname,
     "id         : " + (.id|tostring),
     "ip:port    : " + .ip + ":" + (.port|tostring),
     "brand/type : " + .brand + " " + .type,
-    "username   : " + .username,
-    "password   : " + (if $reveal==1 then .password else "****" end),
-    "secret     : " + (if .secret=="" then "(none)" elif $reveal==1 then .secret else "****" end),
     "added_at   : " + (.added_at // "-"),
     "last_sync  : " + (.last_sync // "-"),
-    "check_point: " + (if .check_point=="" then "(empty)" else ((.check_point|split("\n")|length)|tostring) + " lines" end),
-    "--- config_list ---",
-    (.config_list // "(empty)")'
+    "check_point: " + (if .check_point=="" then "(empty)" else "available" end),
+    "config     : " + (((.config_list // "") | split("\n") | length) | tostring) + " stored lines (not displayed)"'
 }
 
 cmd_add() {
