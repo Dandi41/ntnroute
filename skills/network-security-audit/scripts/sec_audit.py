@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Live security audit of one device, read-only, plus optional CVE research hook.
+"""Live security audit, read-only, plus optional CVE research hook.
 
 Usage:
-  sec_audit.py <ref> [--mgmt-ip IP] [--cve]
+  sec_audit.py <ref> [--mgmt-ip IP] [--cve] [--json]
+  sec_audit.py <ref> ... --config <backup-file>
 
 Runs brand-appropriate read-only commands through `ntn exec` (services, users,
 SSH, firewall state, OS version), parses the transcripts, and prints findings.
@@ -11,7 +12,12 @@ saved config. With --cve it stops after printing the detected OS version and
 the exact research procedure — CVE lookup happens via web tools in chat, never
 guessed by this script.
 
-Exit 1 when a CRITICAL finding exists. Exit 2 when ntn collection failed.
+With --json the script prints one machine-readable JSON object:
+  {"hostname","ip","brand","status","os","error","findings":[{"severity","rule",
+   "category","why","evidence"}],"counts":{...}}
+status is "complete" or "unreachable"; severity uses canonical names
+(CRITICAL/HIGH/MEDIUM/LOW/INFO). Exit 1 when a CRITICAL finding exists.
+Exit 2 when ntn collection failed (status "unreachable").
 """
 import argparse
 import re
@@ -21,6 +27,7 @@ import os
 
 CRIT, WARN, INFO = "CRIT", "WARN", "INFO"
 SEV = {CRIT: 0, WARN: 1, INFO: 2}
+SEV_CANONICAL = {CRIT: "CRITICAL", WARN: "MEDIUM", INFO: "INFO"}
 DEVICES = os.path.expanduser("~/.ntnroute/devices.json")
 
 
@@ -150,6 +157,100 @@ CATEGORY = {
 }
 
 
+def audit_device(ref, mgmt_ip=None, config=None, cve=False):
+    """Audit one device; return a structured result dict."""
+    import json
+    try:
+        dev = resolve_ref(ref)
+    except SystemExit as e:
+        return {"hostname": str(ref), "ip": "", "brand": "", "status": "unreachable",
+                "os": "", "error": str(e), "findings": [], "counts": {}}
+    brand = dev.get("brand", "").lower()
+    findings = []
+    osinfo = {"vendor": brand or "unknown", "os": "unknown", "version": "unknown"}
+    status, error = "complete", ""
+    if brand.startswith("mikrotik"):
+        cmds = ["/system resource print", "/system package update print",
+                "/ip service print", "/ip ssh print",
+                "/user print", "/ip firewall filter print"]
+    elif brand.startswith("cisco"):
+        cmds = ["show version", "show ip ssh", "show ip http server status",
+                "show users", "show run | section line"]
+    else:
+        return {"hostname": dev["hostname"], "ip": dev["ip"], "brand": brand,
+                "status": "unreachable",
+                "os": "", "error": f"brand '{brand}' has no live audit battery yet",
+                "findings": [], "counts": {}}
+
+    try:
+        r = subprocess.run(["ntn", "exec", str(ref)] + cmds,
+                           capture_output=True, text=True, timeout=300)
+        text = r.stdout + r.stderr
+        failed = (r.returncode != 0) or auth_failed_text(text)
+    except (subprocess.TimeoutExpired, FileNotFoundError) as e:
+        text, failed = "", True
+        error = f"collection failed: {e}"
+    if failed:
+        detail = error or "ntn exec failed (connection/auth or command error)"
+        return {"hostname": dev["hostname"], "ip": dev["ip"], "brand": brand,
+                "status": "unreachable", "os": "", "error": detail,
+                "findings": [], "counts": {}}
+
+    if brand.startswith("mikrotik"):
+        osinfo = parse_mikrotik(text, findings)
+        if "chain=input" not in text:
+            add(findings, CRIT, "perimeter-no-filter",
+                "empty input chain — ALL of the services above are reachable from outside; "
+                "this chain is what protects the local network from inbound traffic", "")
+    else:
+        osinfo = parse_cisco(text, findings)
+        if re.search(r"access-list \d+ permit ip any any", text):
+            add(findings, WARN, "acl-permit-any",
+                "access-list permit ip any any — ACL restricts nothing", "")
+
+    counts = {s: sum(1 for x in findings if x[0] == s) for s in (CRIT, WARN, INFO)}
+    result = {
+        "hostname": dev["hostname"], "ip": dev["ip"], "brand": brand,
+        "status": "complete", "os": osinfo["os"], "error": "",
+        "findings": [
+            {"severity": SEV_CANONICAL[s],
+             "rule": rule,
+             "category": CATEGORY.get(rule.split("-")[0], rule.split("-")[0]),
+             "why": why, "evidence": ev}
+            for s, rule, why, ev in sorted(findings, key=lambda x: SEV[x[0]])
+        ],
+        "counts": {SEV_CANONICAL[k]: v for k, v in counts.items()},
+    }
+    if config:
+        here = os.path.dirname(os.path.abspath(__file__))
+        ca = os.path.join(here, "..", "..", "network-change-management", "scripts", "cfg_audit.py")
+        if os.path.exists(ca):
+            try:
+                rc = subprocess.run(["python3", ca, config, "--mgmt-ip", mgmt_ip or dev["ip"]],
+                                    capture_output=True, text=True, timeout=120).returncode
+                result["config_audit_exit"] = rc
+                if rc == 1:
+                    result["counts"]["CRITICAL"] = result["counts"].get("CRITICAL", 0) + 1
+                    result["findings"].append(
+                        {"severity": "CRITICAL", "rule": "config-audit",
+                         "category": "config", "why": "cfg_audit.py reported a CRITICAL rule "
+                         f"on {config}; run it for the full detail", "evidence": ""})
+            except Exception as e:
+                result["config_audit_exit"] = -1
+                result["error"] = f"config audit failed: {e}"
+    if cve:
+        result["cve_research"] = [
+            f"web_search('{osinfo['os']} CVE security advisory') → verify on NVD/vendor PSIRT",
+            f"web_search('{osinfo['os']} hardcoded password exploit incident')",
+            "Check https://nvd.nist.gov/ and the vendor's security advisory page",
+        ]
+    return result
+
+
+def auth_failed_text(text):
+    return bool(re.search(r"Permission denied|no matching|refused|timed out|No route|Connection closed", text))
+
+
 def emit(f, dev, osinfo, out):
     f.sort(key=lambda x: SEV[x[0]])
     counts = {s: sum(1 for x in f if x[0] == s) for s in (CRIT, WARN, INFO)}
@@ -186,8 +287,19 @@ def main():
                     help="print the CVE research procedure for the detected OS")
     ap.add_argument("--config", default=None,
                     help="file backup config; reuses cfg_audit.py rules")
-    ap.add_argument("--json", action="store_true", help="print osinfo as JSON line")
+    ap.add_argument("--json", action="store_true",
+                    help="print one machine-readable JSON result object")
     a = ap.parse_args()
+
+    if a.json:
+        import json
+        result = audit_device(a.ref, mgmt_ip=a.mgmt_ip, config=a.config, cve=a.cve)
+        print(json.dumps(result))
+        if result["status"] == "unreachable":
+            return 2
+        if result["counts"].get("CRITICAL", 0):
+            return 1
+        return 0
 
     dev = resolve_ref(a.ref)
     brand = dev.get("brand", "").lower()

@@ -465,7 +465,8 @@ sync_one() { # id
     rm -f "$cfgfile"; echo "FAILED sync $hostname ($ip): connection/auth"; return 1
   fi
   if [ ! -s "$cfgfile" ]; then rm -f "$cfgfile"; echo "FAILED sync $hostname: empty config output"; return 1; fi
-  cp "$cfgfile" "$BACKUP_DIR/${hostname}-$(date +%Y%m%d-%H%M%S).cfg"
+  mkdir -p "$(backup_root_for "$hostname")"
+  cp "$cfgfile" "$(backup_root_for "$hostname")/$(date +%Y%m%d-%H%M%S)-sync.cfg"
   db_write '(.devices[] | select(.id==$id)).config_list = $cfg
             | (.devices[] | select(.id==$id)).last_sync = (now|todate)' \
            --argjson id "$id" --rawfile cfg "$cfgfile"
@@ -789,7 +790,7 @@ cmd_checkpoints() {
   jq -r --arg h "$hostname" '[.checkpoints[] | select(.hostname==$h)][-10:][] | "  \(.ts) — \(.reason)\n    rollback file: \(.rollback_file)"' "$DB"
 }
 
-cmd_audit() { # ntn audit [N | pending|failed|config|all] [N]
+cmd_audit() { # ntn audit [N | pending|failed|config|all] [N]   (internal)
   local filter="" n=20
   case "${1:-}" in
     "") ;;
@@ -807,30 +808,126 @@ cmd_audit() { # ntn audit [N | pending|failed|config|all] [N]
   esac
 }
 
+# ---------- security audit (internal; used by the network-security-audit skill) ----------
+SEC_AUDIT_PY_CANDIDATES=(
+  "$HOME/.hermes/skills/networking/network-security-audit/scripts/sec_audit.py"
+  "$HOME/ntnroute/skills/network-security-audit/scripts/sec_audit.py"
+)
+sec_audit_py() {
+  local p; for p in "${SEC_AUDIT_PY_CANDIDATES[@]}"; do [ -f "$p" ] && { printf '%s' "$p"; return 0; }; done
+  return 1
+}
+
+cmd_security_audit() { # ntn security-audit <ref|all> [--trigger explicit|quarterly]
+  local scope="" trigger="explicit"
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --trigger) trigger=$2; shift 2;;
+      -*) die "unknown option: $1";;
+      *) [ -z "$scope" ] && scope=$1 || die "unknown argument: $1"; shift;;
+    esac
+  done
+  [ -n "$scope" ] || die "usage: ntn security-audit <ref|all> [--trigger explicit|quarterly]"
+  local py; py=$(sec_audit_py) || die "sec_audit.py not found (install the network-security-audit skill)"
+  command -v python3 >/dev/null 2>&1 || die "python3 not found (required by the security audit battery)"
+
+  local ids
+  if [ "$scope" = "all" ]; then ids=$(jq -r '.devices[].id' "$DB"); else ids=$(resolve_ref "$scope"); fi
+  [ -n "$ids" ] || die "no device matches: $scope"
+
+  local run_id; run_id="sa-$(date -u +%Y%m%dT%H%M%SZ)-$$"
+  local started; started=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  db_write '.security_audits = ((.security_audits // []) + [{run_id:$id, trigger:$tr, scope:$sc, status:"running", started_at:$st, finished_at:"", summary:{}, devices:[]}])[-100:]' \
+    --arg id "$run_id" --arg tr "$trigger" --arg sc "$scope" --arg st "$started"
+
+  # Release the engine lock while the audit battery runs: each sec_audit.py
+  # child spawns `ntn exec`, which needs the same lock. Holding it here would
+  # deadlock every child into its 300 s timeout.
+  exec 9>&- 2>/dev/null || true
+
+  local id dev hostname ip brand out rc
+  local n_crit=0 n_unreach=0 n_ok=0
+  while read -r id; do
+    [ -n "$id" ] || continue
+    dev=$(device_by_id "$id")
+    hostname=$(jq -r '.hostname' <<<"$dev"); ip=$(jq -r '.ip' <<<"$dev"); brand=$(jq -r '.brand' <<<"$dev")
+    echo "Auditing $hostname ($ip) ..."
+    out=$(mktemp "$TMPBASE/ntn.sec.XXXXXX")
+    python3 "$py" "$hostname" --json > "$out" 2>/dev/null; rc=$?
+    if [ $rc -eq 2 ] || ! jq -e . "$out" >/dev/null 2>&1; then
+      local err; err=$(jq -r '.error // "collection failed"' "$out" 2>/dev/null)
+      db_write '.security_audits[-1].devices += [{id:$id, hostname:$h, ip:$ip, brand:$b, status:"unreachable", os:"", error:$e, findings:[], counts:{}}]' \
+        --argjson id "$id" --arg h "$hostname" --arg ip "$ip" --arg b "$brand" --arg e "$err"
+      echo "UNREACHABLE: $hostname — $err"
+      n_unreach=$((n_unreach+1))
+    else
+      db_write '.security_audits[-1].devices += [$d]' --argjson d "$(jq -c --argjson id "$id" '{id:$id, hostname:.hostname, ip:.ip, brand:.brand, status:.status, os:.os, error:.error, findings:.findings, counts:.counts}' "$out")"
+      local c; c=$(jq -r '.counts.CRITICAL // 0' "$out")
+      if [ "$c" -gt 0 ]; then
+        echo "WARNING: $hostname memiliki $c CRITICAL finding(s)"
+        n_crit=$((n_crit+1))
+      else
+        n_ok=$((n_ok+1))
+      fi
+    fi
+    rm -f "$out"
+  done <<< "$ids"
+
+  local finished; finished=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  # re-acquire the engine lock for the final DB writes
+  if command -v flock >/dev/null 2>&1; then exec 9>"$LOCK_FILE"; flock 9; fi
+  local status="complete"
+  [ "$n_unreach" -gt 0 ] && status="complete_with_warnings"
+  db_write '.security_audits[-1].finished_at = $f
+            | .security_audits[-1].status = $s
+            | .security_audits[-1].summary = {devices:($n_d|tonumber), complete:($n_ok|tonumber), unreachable:($n_u|tonumber), critical_runs:($n_c|tonumber)}' \
+    --arg f "$finished" --arg s "$status" --argjson n_d "$(jq -r '.security_audits[-1].devices | length' "$DB")" \
+    --argjson n_ok "$n_ok" --argjson n_u "$n_unreach" --argjson n_c "$n_crit"
+  echo "Security audit run: $run_id ($status)"
+  [ "$n_crit" -gt 0 ] && return 1
+  [ "$n_unreach" -gt 0 ] && return 2
+  return 0
+}
+
+cmd_security_audit_list() { # ntn security-audit-list [N]
+  local n=${1:-10}
+  jq -r --argjson n "$n" '(.security_audits // [])[-$n:][] | "\(.run_id)  \(.status)  \(.trigger)  scope=\(.scope)  \(.started_at)"' "$DB"
+}
+
+cmd_security_audit_show() { # ntn security-audit-show <run-id>
+  [ $# -ge 1 ] || die "usage: ntn security-audit-show <run-id>"
+  jq -r --arg id "$1" '((.security_audits // []) | map(select(.run_id==$id)) | .[0]) as $r
+    | if $r == null then "ERROR: run not found: \($id)" else
+      "run        : \($r.run_id)",
+      "status     : \($r.status)",
+      "trigger    : \($r.trigger)   scope: \($r.scope)",
+      "started    : \($r.started_at)   finished: \($r.finished_at)",
+      "summary    : \($r.summary | tostring)",
+      ($r.devices[] |
+        "  \(.hostname) (\(.ip)) [\(.brand)] — \(.status)" +
+          (if (.os // "") != "" then " — \(.os)" else "" end) +
+          (if (.error // "") != "" then "\n    error: \(.error)" else "" end),
+        (.findings[]? | "    [\(.severity)] \(.rule): \(.why)")),
+      (if ([ $r.devices[] | select(.status=="unreachable") ] | length) > 0
+       then "WARNING: \([ $r.devices[] | select(.status=="unreachable") ] | length) device(s) UNREACHABLE — they must not be considered secure."
+       else empty end)
+    end' "$DB"
+}
+
 usage() {
   cat <<'EOF'
 ntn — NTnRoute.AI device engine
-  ntn list                                   numbered device list
+  ntn list                                   daftar device (hostname, ip:port, type, brand)
   ntn add <IP> <Port> <User> <Pass> <Type> <Brand> [Secret]
-                                             tests the connection first, pulls hostname+config, then saves
-  ntn show <ref> [--reveal]                  device details (ref: number|id|ip|hostname)
-  ntn remove <number|id>                     remove a device
-  ntn ping <ref>                             ICMP test, 3 packets
-  ntn exec <ref> <cmd> [cmd2 ...]            run CLI commands (read-only recommended)
-  ntn sync <ref|all>                         pull config -> config_list + backup
-  ntn config <ref> --script <file> [--rollback <file>] [--reason <text>]
-                                             pre snapshot -> apply -> verify -> update DB
-  ntn rollback <ref>                         apply the check_point script
-  ntn checkpoints <ref>                      checkpoint history
-  ntn audit [N|pending|failed|config|all] [N]  audit trail; filters for tshoot/security review:
-                                             pending = attempts with NO verdict at all
-                                             (process killed mid-apply; completed ones show as
-                                             config-started/rollback-started), failed = all failures,
-                                             config = config+rollback lifecycle
+                                             tes koneksi dulu, tarik hostname + config, lalu simpan
+  ntn remove <number|id>                     hapus device dari inventaris
+  ntn show <ref>                             detail device + config tersimpan (internal: --reveal)
+  ntn sync <ref|all>                         tarik running-config terbaru dari device
 
-Brands: Cisco, Huawei, Aruba, Arista, Ruijie, Juniper, Mikrotik, Fortinet.
+Command lain adalah fungsi internal untuk skill jaringan — bukan bagian
+menu publik; pemakaiannya didokumentasikan di skill yang bersangkutan.
 Mikrotik -> exec-mode (ssh -T, /export, no write memory).
-Other brands -> interactive CLI (ssh -tt) with paging + automatic save.
+Brand lain -> interactive CLI (ssh -tt) with paging + automatic save.
 EOF
 }
 
@@ -848,6 +945,9 @@ main() {
     rollback) cmd_rollback "$@";;
     checkpoints) cmd_checkpoints "$@";;
     audit) cmd_audit "$@";;
+    security-audit) cmd_security_audit "$@";;
+    security-audit-list) cmd_security_audit_list "$@";;
+    security-audit-show) cmd_security_audit_show "$@";;
     help|--help|-h) usage;;
     *) usage; die "unknown command: $sub";;
   esac

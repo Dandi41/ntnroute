@@ -51,6 +51,8 @@ perimeter, or both? Don't assume.
 
 ### 2. Collect live data
 
+For ONE device:
+
 ```bash
 S=~/.hermes/skills/networking/network-security-audit/scripts
 python3 $S/sec_audit.py <ref> [--cve] [--config <backup.cfg>]
@@ -60,6 +62,23 @@ The script runs a read-only command battery per brand via `ntn exec`
 (services, users, SSH, firewall, OS version), parses the transcripts, and
 reports findings per category. Exit 1 = a CRIT exists. `--config` adds the
 config rules from `cfg_audit.py`.
+
+For MULTIPLE devices (an audit usually touches more than one), use the
+engine's internal command — it runs the same battery on every matched device
+and records the run:
+
+```bash
+ntn security-audit <ref|all>          # runs the battery; prints per-device WARNING/UNREACHABLE lines
+ntn security-audit-list [N]           # recent runs
+ntn security-audit-show <run-id>      # full findings per device for one run
+```
+
+The run is persisted in `devices.json` under `.security_audits` (last 100
+kept) with per-device status, OS version, findings, and severity counts —
+so a multi-device audit is recorded once, with every device's result and
+notes, even the unreachable ones. Exit 1 = at least one device has a
+CRITICAL; exit 2 = at least one device was unreachable. Report BOTH kinds
+of warning to the user; an unreachable device must not be treated as safe.
 
 ### 2b. Check the change log (additional evidence)
 
@@ -91,6 +110,9 @@ are covered by the checklist and which are not.
 Format in `templates/audit-report-template.md`: scope, inventory, findings
 (CRIT/WARN/INFO + evidence + CVE + remediation), perimeter exposure,
 hardening plan. Send it to the user — don't execute remediation directly.
+
+Close the report with the routine-audit recommendation: a security audit
+like this should repeat every 3 months (quarterly cadence).
 
 ### 6. Remediation (only after the user approves)
 
