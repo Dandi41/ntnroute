@@ -7,11 +7,11 @@ Engine perangkat jaringan berbasis SSH untuk AI agent: inventaris device, ekseku
 ## Apa yang dilakukan
 
 - **Inventaris** — daftarkan device sekali (`ntn add`); engine menguji koneksi SSH, menarik hostname dan running config, baru menyimpan. Disimpan di file JSON biasa (`~/.ntnroute/devices.json`, mode 600) yang bertahan antar restart agent.
-- **Akses read-only** — `ntn exec` menjalankan perintah `show ...` dan mengembalikan transkripnya.
+- **Akses read-only** — engine menjalankan perintah `show ...` sesuai permintaan dan mengembalikan transkripnya.
 - **Cadangan config** — `ntn sync` menyimpan konfigurasi berjalan ke inventaris dan file backup bertanda waktu; setiap perubahan (dan rollback) yang sukses menerbitkan pasangan arsip di `~/.ntnroute/backups/<host>/<YYYY-MM>/`, maksimal 4 per bulan, disimpan 3 bulan terakhir plus 1 arsip tahunan.
 - **Perubahan config bergerbang** — `ntn config` menjalankan: snapshot pra-perubahan → apply → save → post-check (setiap baris script harus muncul di config baru) → update inventaris. Device tak terjangkau sebelum perubahan? Abort. Device menolak satu baris? Dilaporkan gagal, inventaris tidak disentuh.
-- **Rollback** — setiap perubahan menyimpan checkpoint; `ntn rollback` menerapkan script pembatalnya.
-- **Jejak audit** — setiap percobaan config/rollback dicatat *sebelum* menyentuh device (`config-pending`), lalu disettle: `config-ok`/`config-failed`/`config-aborted` + penanda `config-started` untuk riwayat. Filter `ntn audit` untuk troubleshooting dan audit keamanan: `pending` (percobaan tanpa verdict sama sekali — proses mati di tengah apply), `failed`, `config`, `all`. Entri yang berumur lebih dari 105 hari dipangkas otomatis; run audit keamanan dicatat terpisah, hanya saat audit benar-benar dilakukan.
+- **Rollback** — setiap perubahan menyimpan checkpoint; script pembatalnya bisa diputar ulang saat diminta.
+- **Jejak audit** — setiap percobaan config/rollback dicatat *sebelum* menyentuh device (`config-pending`), lalu disettle: `config-ok`/`config-failed`/`config-aborted` + penanda `config-started` untuk riwayat. Filter jejak perubahan untuk troubleshooting dan audit keamanan: `pending` (percobaan tanpa verdict sama sekali — proses mati di tengah apply), `failed`, `config`, `all`. Entri yang berumur lebih dari 105 hari dipangkas otomatis; run audit keamanan dicatat terpisah, hanya saat audit benar-benar dilakukan.
 
 Engine hanya bash + jq + OpenSSH — tanpa Python, tanpa agent, tanpa daemon.
 Skrip pembantu (`triage`, `rollback_gen`, `ios_session.sh`) juga bash + awk;
@@ -28,6 +28,8 @@ Python stdlib.
 | Juniper Junos | PTY interaktif | `show configuration \| display set` | `commit` (di dalam config mode) |
 | Fortinet FortiGate | PTY interaktif | `show full-configuration` | otomatis (langsung aktif) |
 | MikroTik RouterOS | exec-mode (`ssh -T`) | `/export` | otomatis |
+| Linux (SSH) | exec-mode (`ssh -T`) | snapshot `uname -a` + os-release | — (tanpa model config) |
+| Windows (OpenSSH, cmd.exe) | exec-arg (`ssh host "cmd"`) | snapshot `systeminfo` | — (tanpa model config) |
 
 Kripto lawas (image Cisco tua) ditangani: `diffie-hellman-group14-sha1`, `ssh-rsa`, `aes128-cbc`, `hmac-sha1` dinegosiasikan saat perlu.
 
@@ -114,10 +116,9 @@ Perubahan config selalu: rencana → persetujuan → apply → verifikasi. Skill
 
 ## Catatan keamanan
 
-- Password disimpan **dalam plaintext** di `~/.ntnroute/devices.json` (mode 600, hanya owner). Ini trade-off sadar untuk tool lab — jangan arahkan ke produksi kalau tidak bisa diterima.
-- `ntn show <ref>` menyamarkan password secara default; `--reveal` menampilkannya.
-- `devices.json` dan `backups/` di-gitignore. **Jangan pernah di-commit.**
-
+- Password disimpan **dalam plaintext** di `~/.ntnroute/devices.json` (mode 600, owner-only). Jaga baik-baik file tersebut agar tidak tersebar luas.
+- `ntn show <ref>` menyamarkan password secara default.
+- Backup config di `~/.ntnroute/backups/` memuat rahasia device yang sama — perlakukan dengan kehati-hatian yang sama.
 ## Status & kejujuran
 
 Terbukti end-to-end di perangkat nyata: Cisco IOS 15.4 dan MikroTik RouterOS 7.18.2 (add/list/show/exec/sync, config + post-check, rollback, perintah destruktif, guard device tak terjangkau, guard error device). Brand lainnya (Huawei VRP, Arista EOS, Aruba AOS-CX, Ruijie RGOS, Juniper Junos, Fortinet FortiGate) diverifikasi dengan cara yang sama terhadap CLI vendor yang diemulasi (harness uji lokal, bukan bagian dari toolkit).

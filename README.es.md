@@ -7,11 +7,11 @@ Motor de gestión de dispositivos de red por SSH para agentes de IA: un pequeño
 ## Qué hace
 
 - **Inventario** — registra un dispositivo una vez (`ntn add`); el motor prueba la conexión SSH, obtiene el hostname y la configuración en ejecución, y solo entonces lo guarda. Todo se almacena en un archivo JSON plano (`~/.ntnroute/devices.json`, modo 600) que sobrevive a los reinicios del agente.
-- **Acceso de solo lectura** — `ntn exec` ejecuta comandos tipo `show ...` y devuelve la transcripción.
+- **Acceso de solo lectura** — el motor ejecuta comandos tipo `show ...` a petición y devuelve la transcripción.
 - **Copia de seguridad** — `ntn sync` guarda la configuración en ejecución en el inventario y en un archivo de respaldo con marca de tiempo; cada cambio exitoso (y cada rollback) publica un par de archivo en `~/.ntnroute/backups/<host>/<YYYY-MM>/`, máximo 4 por mes, conservados los últimos 3 meses más uno anual.
 - **Cambios de configuración con puerta** — `ntn config` ejecuta: snapshot previo → aplicar → guardar → post-verificación (cada línea del script debe aparecer en la nueva configuración) → actualización del inventario. ¿Dispositivo inaccesible antes del cambio? Aborta. ¿El dispositivo rechaza una línea? Se reporta el fallo y el inventario queda intacto.
-- **Rollback** — cada cambio guarda un checkpoint; `ntn rollback` aplica el script de deshacer almacenado.
-- **Registro de auditoría** — cada intento de config/rollback se registra *antes* de tocar el dispositivo (`config-pending`) y luego se cierra: `config-ok`/`config-failed`/`config-aborted` más un marcador `config-started` para el historial. Los filtros de `ntn audit` sirven para troubleshooting y revisión de seguridad: `pending` (intentos sin veredicto alguno — proceso muerto a mitad del apply), `failed`, `config`, `all`. Las entradas con más de 105 días se podan automáticamente; las ejecuciones de auditoría de seguridad se registran por separado, solo cuando realmente se realiza una auditoría.
+- **Rollback** — cada cambio guarda un checkpoint; el script de deshacer almacenado puede reproducirse a petición.
+- **Registro de auditoría** — cada intento de config/rollback se registra *antes* de tocar el dispositivo (`config-pending`) y luego se cierra: `config-ok`/`config-failed`/`config-aborted` más un marcador `config-started` para el historial. Los filtros del registro de cambios sirven para troubleshooting y revisión de seguridad: `pending` (intentos sin veredicto alguno — proceso muerto a mitad del apply), `failed`, `config`, `all`. Las entradas con más de 105 días se podan automáticamente; las ejecuciones de auditoría de seguridad se registran por separado, solo cuando realmente se realiza una auditoría.
 
 El motor es solo bash + jq + OpenSSH — sin Python, sin agentes, sin demonios.
 Los scripts auxiliares (`triage`, `rollback_gen`, `ios_session.sh`) también son
@@ -28,6 +28,8 @@ bash + awk; solo las compuertas de auditoría opcionales (`cfg_audit.py`,
 | Juniper Junos | PTY interactivo | `show configuration \| display set` | `commit` (dentro del modo config) |
 | Fortinet FortiGate | PTY interactivo | `show full-configuration` | automático (se aplica al enviar) |
 | MikroTik RouterOS | modo exec (`ssh -T`) | `/export` | automático |
+| Linux (SSH) | modo exec (`ssh -T`) | snapshot `uname -a` + os-release | — (sin modelo de configuración) |
+| Windows (OpenSSH, cmd.exe) | exec-arg (`ssh host "cmd"`) | snapshot `systeminfo` | — (sin modelo de configuración) |
 
 La criptografía legacy (imágenes Cisco antiguas) está soportada: `diffie-hellman-group14-sha1`, `ssh-rsa`, `aes128-cbc`, `hmac-sha1` se negocian cuando hace falta.
 
@@ -114,10 +116,9 @@ Un cambio de configuración es siempre: plan → aprobación → aplicar → ver
 
 ## Notas de seguridad
 
-- Las contraseñas se guardan **en texto plano** en `~/.ntnroute/devices.json` (modo 600, solo el propietario). Es una decisión consciente para una herramienta de laboratorio — no la apuntes a producción si eso es inaceptable.
-- `ntn show <ref>` oculta las contraseñas por defecto; `--reveal` las muestra.
-- `devices.json` y `backups/` están en .gitignore. **Nunca los subas al repositorio.**
-
+- Las contraseñas se guardan **en texto plano** en `~/.ntnroute/devices.json` (modo 600, solo el propietario). Cuida bien ese archivo para que no se difunda fuera de la máquina.
+- `ntn show <ref>` enmascara las contraseñas por defecto.
+- Los backups de configuración en `~/.ntnroute/backups/` contienen los mismos secretos de los dispositivos — trátalos con el mismo cuidado.
 ## Estado y honestidad
 
 Probado de extremo a extremo en dispositivos reales: Cisco IOS 15.4 y MikroTik RouterOS 7.18.2 (add/list/show/exec/sync, config + post-verificación, rollback, comandos destructivos, guardia de dispositivo inaccesible, guardia de error del dispositivo). Las demás marcas (Huawei VRP, Arista EOS, Aruba AOS-CX, Ruijie RGOS, Juniper Junos, Fortinet FortiGate) se verificaron igual contra CLIs de fabricante emulados (arnés de pruebas local, no forma parte del toolkit).

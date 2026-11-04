@@ -38,37 +38,24 @@ Storage: `~/.ntnroute/devices.json` (mode 600). Backups: `~/.ntnroute/backups/`.
 
 ## Commands
 
-**Menu rule (first contact).** When the user types `ntn` alone, asks "what can ntn do", or wants the command list: run `ntn help`, then present EVERY public command from the block below — all 5, each with its arguments and a clear one-line explanation of what it is for, written in the user's language. Never compress the menu into grouped bullets, never drop commands, never replace the menu with a summary. The full menu IS the answer; a short closing question ("mau mulai dari mana?") is fine. The engine has more capabilities, but those are internal and owned by the networking skills — they are not part of the user-facing menu.
+**Menu rule (first contact).** When the user types `ntn` alone, asks "what can ntn do", or wants the command list: run `ntn help`, then present EVERY public command from the block below — all 5, each with its arguments and a clear one-line explanation of what it is for, written in the user's language. Never compress the menu into grouped bullets, never drop commands, never replace the menu with a summary. The full menu IS the answer; a short closing question ("what would you like to do first?") is fine. The engine has more capabilities, but those are internal and owned by the networking skills — they are not part of the user-facing menu.
 
 ```
-ntn list                                   # daftar bernomor (hostname, ip:port, type, brand — tanpa kredensial)
+ntn list                                   # numbered list (hostname, ip:port, type, brand — no credentials)
 ntn add <IP> <Port> <User> <Pass> <Type> <Brand> [Secret]
-                                           # tes koneksi dulu, tarik hostname + config, lalu simpan
-ntn remove <number|id>                     # hapus device dari inventaris (hanya number/id)
-ntn show <ref>                             # detail device + config tersimpan (kredensial disensor)
-ntn sync <ref|all>                         # tarik running-config terbaru dari device
+                                           # tests the connection first, pulls hostname + config, then saves
+ntn remove <number|id>                     # remove a device from the inventory (number/id only)
+ntn show <ref>                             # device details + stored config (credentials masked)
+ntn sync <ref|all>                         # pull the latest running-config from the device
 ```
 
-**Internal commands (agent-only).** Everything else — `exec`, `ping`, `config`,
-`rollback`, `checkpoints`, `audit`, `security-audit*`, and the `show --reveal`
-flag — is skill-owned. The engine REFUSES them without the gate variable, so a
-user typing them directly gets an error instead of a result. Every internal
-call the agent makes must carry the prefix:
-
-```
-NTN_INTERNAL=1 ntn exec <ref> '<cmd>' ['<cmd2>' ...]   # CLI commands, transcript output
-NTN_INTERNAL=1 ntn ping <ref>
-NTN_INTERNAL=1 ntn config <ref> --script <file> [--rollback <file>] [--reason '<text>']
-NTN_INTERNAL=1 ntn rollback <ref>                      # applies the stored check_point
-NTN_INTERNAL=1 ntn checkpoints <ref>
-NTN_INTERNAL=1 ntn audit [N|pending|failed|config|all] [N]
-NTN_INTERNAL=1 ntn security-audit <ref|all> [--trigger explicit|quarterly]
-NTN_INTERNAL=1 ntn security-audit-list [N]
-NTN_INTERNAL=1 ntn security-audit-show <run-id>
-NTN_INTERNAL=1 ntn show <ref> --reveal                 # the ONLY way to print credentials
-```
-
-`<ref>` = display number, `id`, `ip`, or `hostname` (case-insensitive); `remove` takes only number/id.
+**Internal operations (agent-only).** Everything else — reading live state,
+connectivity probes, gated config changes, rollbacks, checkpoints, the change
+log, security audits — is executed by the agent as part of a skill's workflow,
+never presented to the user as a command menu. The engine enforces this: those
+operations are refused without the `NTN_INTERNAL=1` gate variable. The exact
+syntax the agent runs lives in `references/engine-commands.md`; the workflows
+below name the operation, and the reference supplies the invocation.
 
 ## Workflows
 
@@ -86,7 +73,7 @@ Do not delete immediately. `ntn list` → ask the user for the row number → `n
 
 ### Troubleshooting
 1. `ntn list` / `ntn show <ref>` for context.
-2. `NTN_INTERNAL=1 ntn exec <ref> 'show ip interface brief' 'show ip route' ...` — read the real condition.
+2. Read the live condition: run the device's `show` commands through the engine's exec operation (invocation: `references/engine-commands.md`).
 3. Web research on syntax/best practices for the brand is allowed.
 4. Propose the fix + script, show the 5-block plan (plan+reason, config, rollback, verification, verdict gate), request approval.
 5. After success, clean up artifacts (scratch files in `$TMPDIR`, no logs left on the device).
@@ -112,13 +99,12 @@ $S/rollback_gen "$TMPDIR/change.cmd" \
   --out "$TMPDIR/rollback.cmd"
 # MikroTik: the result contains `remove [find]` placeholders — narrow each find to the
 # object the change actually added.
-# 4. show the change + rollback to the user, ask permission, then:
-NTN_INTERNAL=1 ntn config 1 --script "$TMPDIR/change.cmd" \
-  --rollback "$TMPDIR/rollback.cmd" --reason 'short reason'
+# 4. show the change + rollback to the user, ask permission, then apply through
+#    the engine's gated config operation (invocation: references/engine-commands.md)
 ```
 The engine performs: pre snapshot → apply → save → post-check → update `config_list` + `check_point` → publish the backup archive (`~/.ntnroute/backups/<host>/<YYYY-MM>/`, retention: max 4 per month, last 3 months + one yearly keeper). Success only when there are no device errors AND every script line appears in the new config.
 
-`no ...` lines are verified heuristically (they cannot be matched by grep) — check manually with `NTN_INTERNAL=1 ntn exec <ref> 'show ...'`.
+`no ...` lines are verified heuristically (they cannot be matched by grep) — after the apply, read the state back with the engine's exec operation and confirm each negated line took effect.
 
 ## Test status
 
@@ -127,13 +113,15 @@ Proven end-to-end (not just designed):
 | Test | Device | Result |
 |---|---|---|
 | `add` / `list` / `show` / `exec` / `sync` | a lab Cisco IOS 15.4 router, a lab RouterOS 7.18.2 device | OK |
-| `config` + post-check + `check_point` | Cisco — add Loopback99 + description | SUKSES, verified on the device |
-| `rollback` | Cisco — remove Loopback99 | SUKSES, `config_list` clean |
-| Multi-line `config` (menu path) | RouterOS — `/ip address add` + `set comment` | SUKSES, `mt_normalize` works |
-| `rollback` + destructive commands | RouterOS — `remove [find]` + clear comment | SUKSES, MISSING=0 |
+| `config` + post-check + `check_point` | Cisco — add Loopback99 + description | SUCCESS, verified on the device |
+| `rollback` | Cisco — remove Loopback99 | SUCCESS, `config_list` clean |
+| Multi-line `config` (menu path) | RouterOS — `/ip address add` + `set comment` | SUCCESS, `mt_normalize` works |
+| `rollback` + destructive commands | RouterOS — `remove [find]` + clear comment | SUCCESS, MISSING=0 |
 | Pre-snapshot guard with unreachable device | fake IP entry | Abort before apply, exit 1 |
-| Device-error guard (Cisco) | invalid IP address | GAGAL reported, `config_list` unchanged |
+| Device-error guard (Cisco) | invalid IP address | FAILED reported, `config_list` unchanged |
 | Device-error guard (RouterOS) | `address=999.999.999.999/24` | `invalid value for argument address`, `config_list` unchanged |
+| `add` / `exec` / `sync` (Linux brand) | mock Linux server (paramiko, exec-mode) | OK — `uname -a` + os-release snapshot |
+| `add` / `exec` / `sync`, `config` refused | real Windows 11 host over OpenSSH (cmd.exe) | OK — `systeminfo` snapshot, hostname auto-extracted; config/rollback correctly refused |
 
 **Not yet tested:** Huawei, Aruba, Arista, Ruijie, Juniper — the code paths exist (`paging_cmd`, `secret_cmd`, `config_enter`, `save_lines`) but have never been run against real devices.
 

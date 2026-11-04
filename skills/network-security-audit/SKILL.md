@@ -64,17 +64,14 @@ reports findings per category. Exit 1 = a CRIT exists. `--config` adds the
 config rules from `cfg_audit.py`.
 
 For MULTIPLE devices (an audit usually touches more than one), use the
-engine's internal command — it runs the same battery on every matched device
-and records the run. Internal engine commands require the `NTN_INTERNAL=1`
-prefix (the engine refuses them without it; `sec_audit.py` sets it itself
-when it spawns `ntn exec`):
+engine's multi-device audit operation — it runs the same battery on every
+matched device and records the run. The engine's internal operations are
+skill-owned: they require the `NTN_INTERNAL=1` gate variable (the engine
+refuses them without it; `sec_audit.py` sets it itself when it spawns
+`ntn exec`). Invocation: `ntnroute` → `references/engine-commands.md`.
 
-```bash
-NTN_INTERNAL=1 ntn security-audit <ref|all>   # runs the battery; prints per-device WARNING/UNREACHABLE lines
-NTN_INTERNAL=1 ntn security-audit-list [N]    # recent runs
-NTN_INTERNAL=1 ntn security-audit-show <run-id>   # full findings per device for one run
-```
-
+The workflow: run the audit (per-device WARNING/UNREACHABLE lines come back),
+list recent runs, and show the full per-device findings of the latest run.
 The run is persisted in `devices.json` under `.security_audits` (last 100
 kept) with per-device status, OS version, findings, and severity counts —
 so a multi-device audit is recorded once, with every device's result and
@@ -84,10 +81,9 @@ of warning to the user; an unreachable device must not be treated as safe.
 
 ### 2b. Check the change log (additional evidence)
 
-```bash
-NTN_INTERNAL=1 ntn audit config 50    # device timeline: pending/started/ok/failed/aborted
-NTN_INTERNAL=1 ntn audit pending      # attempts with NO verdict — an apply that died mid-flight
-```
+Read the engine's change log for the device's config/rollback timeline and
+for attempts with no verdict — an apply that died mid-flight
+(invocation: `network-troubleshooting` → `references/audit-trail.md`).
 
 Changes made outside the approval gate, or an apply that never reported a
 verdict (device state may not match the inventory's `config_list`), are findings

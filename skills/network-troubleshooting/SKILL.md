@@ -49,13 +49,14 @@ adding/removing devices (that is the `ntnroute` skill), or plain Linux servers.
 
 Ask the user: which device, what symptom, since when, who is affected.
 
-> **Engine gate:** every internal engine command (`exec`, `ping`, `config`,
-> `rollback`, `checkpoints`, `audit`, `security-audit*`) must run with the
-> `NTN_INTERNAL=1` prefix — the engine refuses them without it (they are
-> skill-owned, not part of the public `ntn help` menu).
+> **Engine gate:** the engine's internal operations (exec, ping, config,
+> rollback, checkpoints, audit, security-audit) are skill-owned — the engine
+> refuses them without the `NTN_INTERNAL=1` gate variable, and they never
+> appear in the public `ntn help` menu. Exact invocations:
+> `ntnroute` → `references/engine-commands.md`.
 
-Run `NTN_INTERNAL=1 ntn ping <ref>` first — if ICMP does not get through, the problem is
-below SSH.
+Probe reachability first (the engine's ping operation) — if ICMP does not get
+through, the problem is below SSH.
 
 ### 2. Pull snapshot
 
@@ -64,15 +65,13 @@ ntn sync <ref>
 ```
 
 Keep the backup file as a baseline. If the device cannot be reached over SSH,
-use `ntn ping` plus checks from another device that is still alive.
+probe reachability plus checks from another device that is still alive.
 
 ### 2b. Check the audit trail (additional evidence — only when the symptom could be change-related)
 
-```bash
-NTN_INTERNAL=1 ntn audit pending     # attempts with NO verdict = a session died mid-apply
-NTN_INTERNAL=1 ntn audit failed      # what broke, and when
-NTN_INTERNAL=1 ntn audit config 50   # the device's change timeline
-```
+Read the engine's change log: first the attempts with no verdict (a session
+that died mid-apply), then every recorded failure, then the device's change
+timeline (invocation: `references/audit-trail.md`).
 
 An unexplained entry often *is* the cause: a change applied by someone else, an
 apply that was interrupted, a device that drifted from the inventory. An
@@ -83,12 +82,9 @@ link/physical symptoms — the OSI ladder below settles those.
 
 ### 3. Collect diagnostic data
 
-Run the per-brand commands from `references/vendor-commands.md` via
-`ntn exec <ref> '<cmd>'`. Save the output to a file:
-
-```bash
-NTN_INTERNAL=1 ntn exec <ref> 'show interfaces' 'show ip route' 'show ip arp' > out.txt
-```
+Run the per-brand commands from `references/vendor-commands.md` through the
+engine's exec operation, one batch per device, and save the transcript to a
+file for the triage step.
 
 ### 4. Automatic triage
 

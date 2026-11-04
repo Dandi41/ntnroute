@@ -134,7 +134,23 @@ device_by_id() { jq --argjson id "$1" '.devices[] | select(.id==$id)' "$DB"; }
 norm_brand() { case "${1,,}" in cisco) echo Cisco;; huawei) echo Huawei;; aruba) echo Aruba;; arista) echo Arista;; ruijie) echo Ruijie;; juniper) echo Juniper;; fortinet|fortigate) echo Fortinet;; mikrotik) echo Mikrotik;; *) echo "${1^}";; esac; }
 norm_type()  { case "${1,,}" in router) echo Router;; switch) echo Switch;; olt) echo OLT;; firewall) echo Firewall;; ap|accesspoint|access-point) echo AP;; *) echo "${1^}";; esac; }
 
-is_exec_brand() { [ "$1" = "Mikrotik" ]; }
+is_exec_brand() { case "$1" in Mikrotik) return 0;; esac; [ "$(brand_get "$1" mode)" = "exec" ]; }
+is_execarg_brand() { [ "$(brand_get "$1" mode)" = "exec-arg" ]; }
+
+run_exec_arg() { # ip port user pass command out timeout_s — one exec request, command as ssh argument
+  local ip=$1 port=$2 user=$3 pass=$4 cmd=$5 out=$6 tmo=$7
+  local work rc
+  work=$(mktemp -d "$TMPBASE/ntn.ssh.XXXXXX") || die "mktemp failed"
+  printf '#!/bin/bash\nprintf "%%s\\n" "$NTN_PW"\n' > "$work/askpass.sh"
+  chmod 700 "$work/askpass.sh"
+  NTN_PW="$pass" SSH_ASKPASS="$work/askpass.sh" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 \
+    "$TIMEOUT_BIN" "$tmo" ssh -T "${SSH_OPTS[@]}" -p "$port" "$user@$ip" "$cmd" 2>&1 \
+    | tr -d '\r' | grep -v '^Warning: Permanently added' > "$out"
+  rc=${PIPESTATUS[0]}
+  chmod 600 "$out" 2>/dev/null
+  rm -rf "$work"
+  return "$rc"
+}
 
 # ---- brand profiles: brands.json overrides/extends the built-in tables ----
 brand_profile() { [ -f "$BRANDS_FILE" ] && jq -e --arg b "${1,,}" '(.[$b] | type == "object")' "$BRANDS_FILE" >/dev/null 2>&1; }
@@ -257,7 +273,10 @@ build_exec_plan() { # brand secret plan_file cmd...
 pull_config() { # ip port user pass secret brand out_file -> exit code; out contains config only
   local ip=$1 port=$2 user=$3 pass=$4 secret=$5 brand=$6 out=$7
   local rc
-  if is_exec_brand "$brand"; then
+  if is_execarg_brand "$brand"; then
+    run_exec_arg "$ip" "$port" "$user" "$pass" "$(config_cmd_show "$brand")" "$out" 120
+    rc=$?
+  elif is_exec_brand "$brand"; then
     local cfile; cfile=$(mktemp "$TMPBASE/ntn.cmd.XXXXXX")
     printf '%s\n' "$(config_cmd_show "$brand")" > "$cfile"
     run_exec_mode "$ip" "$port" "$user" "$pass" "$cfile" "$out" 90
@@ -282,12 +301,22 @@ pull_hostname() { # ip port user pass secret brand -> stdout hostname ('' on fai
   local ip=$1 port=$2 user=$3 pass=$4 secret=$5 brand=$6
   local out; out=$(mktemp "$TMPBASE/ntn.hn.XXXXXX")
   local hn=""
+  if is_execarg_brand "$brand"; then
+    run_exec_arg "$ip" "$port" "$user" "$pass" "$(hostname_cmd_show "$brand")" "$out" 60 || true
+    hn=$(awk 'NF { print; exit }' "$out" | tr -d '\r')
+    rm -f "$out"
+    printf '%s' "$hn"
+    return 0
+  fi
   if is_exec_brand "$brand"; then
     local cfile; cfile=$(mktemp "$TMPBASE/ntn.cmd.XXXXXX")
     printf '%s\n' "$(hostname_cmd_show "$brand")" > "$cfile"
     run_exec_mode "$ip" "$port" "$user" "$pass" "$cfile" "$out" 60 || true
     rm -f "$cfile"
     hn=$(awk -F': *' '/^ *name:/{print $2; exit}' "$out" | tr -d '\r')
+    if [ -z "$hn" ] && [ "$(brand_get "$brand" hostname_field)" = "bare" ]; then
+      hn=$(awk 'NF { print; exit }' "$out" | tr -d '\r')
+    fi
   else
     local plan; plan=$(mktemp "$TMPBASE/ntn.plan.XXXXXX")
     build_exec_plan "$brand" "$secret" "$plan" "$(hostname_cmd_show "$brand")"
@@ -411,6 +440,11 @@ cmd_ping() {
 
 run_device_commands() { # ip port user pass secret brand out_file timeout cmd... -> rc
   local ip=$1 port=$2 user=$3 pass=$4 secret=$5 brand=$6 out=$7 tmo=$8; shift 8
+  if is_execarg_brand "$brand"; then
+    local joined; joined=$(printf '%s & ' "$@"); joined="${joined% & }"
+    run_exec_arg "$ip" "$port" "$user" "$pass" "$joined" "$out" "$tmo"
+    return $?
+  fi
   if is_exec_brand "$brand"; then
     local cfile; cfile=$(mktemp "$TMPBASE/ntn.cmd.XXXXXX")
     printf '%s\n' "$@" > "$cfile"
@@ -722,6 +756,10 @@ cmd_config() {
   [ -n "$reason" ] || reason="(no reason given)"
   local id; id=$(resolve_ref "$ref"); [ -n "$id" ] || die "device not found: $ref"
   local hostname ip; hostname=$(device_by_id "$id" | jq -r '.hostname'); ip=$(device_by_id "$id" | jq -r '.ip')
+  local cfgbrand; cfgbrand=$(device_by_id "$id" | jq -r '.brand')
+  if [ "$(brand_get "$cfgbrand" config_supported)" = "false" ]; then
+    die "brand $cfgbrand has no config model — read-only exec and sync only; nothing to apply, nothing to roll back"
+  fi
   local ts; ts=$(date +%Y%m%d-%H%M%S)
   local rbfile="$BACKUP_DIR/${hostname}-${ts}-rollback.cmd"
 

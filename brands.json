@@ -1,5 +1,39 @@
 {
-  "_doc": "Per-brand overrides for the ntn engine. Keys are lowercase brand names and OVERRIDE built-in behavior. Fields (all optional): paging = pager-disabling command (\"\" = none); secret_cmd = privilege command (\"\" = none); config_enter / config_leave = enter/leave config mode; save_lines = array of lines sent after the script ([] = no save); save_delay = seconds per save line; config_show = full config pull command; hostname_show = hostname pull command; hostname_field = hostname|sysname|host-name|colon; err_pattern = grep -E pattern for device errors; negate_prefix = rollback_gen negation prefix without trailing space (no|undo|delete|...). Built-in brands: cisco, huawei, aruba, arista, ruijie, juniper, mikrotik, fortinet. Unknown brands without a profile get generic Cisco-like defaults and skip the save step (running-config only).",
+  "_doc": "Per-brand overrides for the ntn engine. Keys are lowercase brand names and OVERRIDE built-in behavior. Fields (all optional): mode = \"exec\" for stdin-driven ssh -T brands (default is interactive PTY); paging = pager-disabling command (\"\" = none); secret_cmd = privilege command (\"\" = none); config_enter / config_leave = enter/leave config mode; save_lines = array of lines sent after the script ([] = no save); save_delay = seconds per save line; config_show = full config pull command; config_supported = \"false\" marks a brand with no config model (exec/sync only, config apply refused); hostname_show = hostname pull command; hostname_field = hostname|sysname|host-name|colon|bare (bare = first non-empty output line); err_pattern = grep -E pattern for device errors; negate_prefix = rollback_gen negation prefix without trailing space (no|undo|delete|...). Built-in brands: cisco, huawei, aruba, arista, ruijie, juniper, mikrotik, fortinet, linux, windows. Unknown brands without a profile get generic Cisco-like defaults and skip the save step (running-config only).",
+  "_supported": [
+    "cisco",
+    "huawei",
+    "aruba",
+    "arista",
+    "ruijie",
+    "juniper",
+    "mikrotik",
+    "fortinet",
+    "linux",
+    "windows"
+  ],
+  "linux": {
+    "_doc": "Linux server over SSH — exec-mode (stdin-driven ssh -T). No config model: sync snapshots system info, config apply is refused by the engine. Use exec for read-only commands.",
+    "mode": "exec",
+    "paging": "",
+    "secret_cmd": "",
+    "config_show": "uname -a; head -5 /etc/os-release",
+    "config_supported": "false",
+    "hostname_show": "hostname",
+    "hostname_field": "bare",
+    "err_pattern": "(^bash:|^sh:|command not found|Permission denied|No such file or directory)"
+  },
+  "windows": {
+    "_doc": "Windows host over OpenSSH (default shell cmd.exe) — exec-arg mode (each batch as one ssh exec request joined with &; a shell request without PTY is reset by Windows OpenSSH). No config model: sync snapshots systeminfo, config apply is refused by the engine. Use exec for read-only commands.",
+    "mode": "exec-arg",
+    "paging": "",
+    "secret_cmd": "",
+    "config_show": "systeminfo",
+    "config_supported": "false",
+    "hostname_show": "hostname",
+    "hostname_field": "bare",
+    "err_pattern": "(is not recognized|Access is denied|The system cannot find)"
+  },
   "zte": {
     "_doc": "EXAMPLE profile — ZXR10 is Cisco-like; adjust to your ZTE model/firmware.",
     "paging": "terminal length 0",

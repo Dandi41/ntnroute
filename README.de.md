@@ -7,11 +7,11 @@ SSH-basierte Network-Device-Engine für KI-Agenten: ein kompaktes Geräte-Invent
 ## Was es tut
 
 - **Inventar** — Geräte einmal registrieren (`ntn add`); die Engine testet die SSH-Verbindung, zieht Hostname und laufende Konfiguration und speichert erst dann. Gespeichert wird in einer einfachen JSON-Datei (`~/.ntnroute/devices.json`, Modus 600), die Agent-Neustarts überlebt.
-- **Nur-Lese-Zugriff** — `ntn exec` führt `show ...`-Befehle aus und liefert das Transkript zurück.
+- **Nur-Lese-Zugriff** — die Engine führt `show ...`-Befehle auf Anforderung aus und liefert das Transkript zurück.
 - **Config-Backup** — `ntn sync` zieht die Running-Config ins Inventar und in eine Backup-Datei mit Zeitstempel; jede erfolgreiche Änderung (und jeder Rollback) veröffentlicht ein Archivpaar unter `~/.ntnroute/backups/<host>/<YYYY-MM>/`, maximal 4 pro Monat, aufbewahrt für die letzten 3 Monate plus einen jährlichen Keeper.
 - **Freigabepflichtige Config-Änderungen** — `ntn config` führt aus: Snapshot vor der Änderung → anwenden → speichern → Post-Check (jede Skriptzeile muss in der neuen Konfiguration erscheinen) → Inventar-Update. Gerät vor der Änderung nicht erreichbar? Abbruch. Gerät verwirft eine Zeile? Fehler wird gemeldet, das Inventar bleibt unangetastet.
-- **Rollback** — jede Änderung legt einen Checkpoint an; `ntn rollback` wendet das gespeicherte Rückgängig-Skript an.
-- **Audit-Trail** — jeder Config-/Rollback-Vorgang wird *vor* dem Zugriff auf das Gerät protokolliert (`config-pending`) und dann abgeschlossen: `config-ok`/`config-failed`/`config-aborted` plus ein `config-started`-Marker für die Akte. Die `ntn audit`-Filter dienen Troubleshooting und Security-Review: `pending` (Vorgänge ganz ohne Ergebnis — Prozess mitten im Apply beendet), `failed`, `config`, `all`. Einträge älter als 105 Tage werden automatisch entfernt; Security-Audit-Läufe werden separat aufgezeichnet, nur wenn tatsächlich ein Audit durchgeführt wird.
+- **Rollback** — jede Änderung legt einen Checkpoint an; das gespeicherte Rückgängig-Skript kann auf Anforderung wiedereingespielt werden.
+- **Audit-Trail** — jeder Config-/Rollback-Vorgang wird *vor* dem Zugriff auf das Gerät protokolliert (`config-pending`) und dann abgeschlossen: `config-ok`/`config-failed`/`config-aborted` plus ein `config-started`-Marker für die Akte. Die Filter des Änderungsprotokolls dienen Troubleshooting und Security-Review: `pending` (Vorgänge ganz ohne Ergebnis — Prozess mitten im Apply beendet), `failed`, `config`, `all`. Einträge älter als 105 Tage werden automatisch entfernt; Security-Audit-Läufe werden separat aufgezeichnet, nur wenn tatsächlich ein Audit durchgeführt wird.
 
 Die Engine besteht nur aus bash + jq + OpenSSH — kein Python, kein Agent, kein
 Daemon. Die Hilfsskripte (`triage`, `rollback_gen`, `ios_session.sh`) sind
@@ -28,6 +28,8 @@ ebenfalls bash + awk; nur die optionalen Audit-Gates (`cfg_audit.py`,
 | Juniper Junos | interaktives PTY | `show configuration \| display set` | `commit` (im Konfigurationsmodus) |
 | Fortinet FortiGate | interaktives PTY | `show full-configuration` | automatisch (wirkt sofort) |
 | MikroTik RouterOS | Exec-Modus (`ssh -T`) | `/export` | automatisch |
+| Linux (SSH) | Exec-Modus (`ssh -T`) | `uname -a` + os-release-Snapshot | — (kein Config-Modell) |
+| Windows (OpenSSH, cmd.exe) | exec-arg (`ssh host "cmd"`) | `systeminfo`-Snapshot | — (kein Config-Modell) |
 
 Legacy-Krypto (alte Cisco-Images) wird behandelt: `diffie-hellman-group14-sha1`, `ssh-rsa`, `aes128-cbc`, `hmac-sha1` werden bei Bedarf ausgehandelt.
 
@@ -114,10 +116,9 @@ Eine Config-Änderung läuft immer: Plan → Freigabe → Anwenden → Verifizie
 
 ## Sicherheitshinweise
 
-- Passwörter werden **im Klartext** in `~/.ntnroute/devices.json` gespeichert (Modus 600, nur Eigentümer). Das ist ein bewusster Kompromiss für ein Lab-Tool — nicht auf Produktivsysteme richten, wenn das unakzeptabel ist.
-- `ntn show <ref>` maskiert Passwörter standardmäßig; `--reveal` zeigt sie.
-- `devices.json` und `backups/` sind in .gitignore. **Niemals committen.**
-
+- Passwörter werden **im Klartext** in `~/.ntnroute/devices.json` gespeichert (Modus 600, nur für den Besitzer). Bewahre diese Datei gut auf, damit sie nicht über die Maschine hinaus verbreitet wird.
+- `ntn show <ref>` maskiert Passwörter standardmäßig.
+- Config-Backups unter `~/.ntnroute/backups/` enthalten dieselben Geräte-Geheimnisse — mit derselben Sorgfalt behandeln.
 ## Status & Ehrlichkeit
 
 End-to-end an realen Geräten erprobt: Cisco IOS 15.4 und MikroTik RouterOS 7.18.2 (add/list/show/exec/sync, Config + Post-Check, Rollback, destruktive Befehle, Wächter für nicht erreichbare Geräte, Wächter für Gerätefehler). Die übrigen Marken (Huawei VRP, Arista EOS, Aruba AOS-CX, Ruijie RGOS, Juniper Junos, Fortinet FortiGate) wurden auf die gleiche Weise gegen emulierte Hersteller-CLIs geprüft (lokales Test-Harness, nicht Teil des Toolkits).

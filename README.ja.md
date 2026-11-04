@@ -7,11 +7,11 @@ AIエージェント向けのSSHベース・ネットワーク機器エンジン
 ## できること
 
 - **インベントリ** — デバイスを一度登録（`ntn add`）すると、エンジンがSSH接続をテストし、ホスト名とランニングコンフィグを取得してから保存します。保存先はプレーンなJSONファイル（`~/.ntnroute/devices.json`、パーミッション600）で、エージェントの再起動後も保持されます。
-- **読み取り専用アクセス** — `ntn exec` が `show ...` 系コマンドを実行し、トランスクリプトを返します。
+- **読み取り専用アクセス** — エンジンが `show ...` 系コマンドを要求に応じて実行し、トランスクリプトを返します。
 - **コンフィグバックアップ** — `ntn sync` がランニングコンフィグをインベントリとタイムスタンプ付きバックアップファイルに保存します。成功した変更（およびロールバック）ごとに `~/.ntnroute/backups/<host>/<YYYY-MM>/` へアーカイブペアが公開され、月4件まで、直近3ヶ月＋年1件が保持されます。
 - **ゲート付き設定変更** — `ntn config` は次を実行します：変更前スナップショット → 適用 → 保存 → ポストチェック（スクリプトの全行が新コンフィグに現れること） → インベントリ更新。変更前にデバイスに到達できない場合は中断。デバイスが行を拒否した場合は失敗を報告し、インベントリは変更しません。
-- **ロールバック** — 変更ごとにチェックポイントを保存。`ntn rollback` で取り消しスクリプトを適用します。
-- **監査ログ** — config/rollback の試行はデバイスに触れる*前*に記録され（`config-pending`）、その後確定します：`config-ok`/`config-failed`/`config-aborted` と、記録用の `config-started` マーカー。`ntn audit` のフィルタはトラブルシュートとセキュリティ監査向け：`pending`（判定が一切ない試行 — apply 中にプロセスが停止）、`failed`、`config`、`all`。 105日より古いエントリは自動で削除されます。セキュリティ監査の実行記録は別に保存され、実際に監査を行ったときだけ書き込まれます。
+- **ロールバック** — 変更ごとにチェックポイントを保存。保存された取り消しスクリプトは要求に応じて再生できます。
+- **監査ログ** — config/rollback の試行はデバイスに触れる*前*に記録され（`config-pending`）、その後確定します：`config-ok`/`config-failed`/`config-aborted` と、記録用の `config-started` マーカー。変更ログのフィルタはトラブルシュートとセキュリティ監査向け：`pending`（判定が一切ない試行 — apply 中にプロセスが停止）、`failed`、`config`、`all`。 105日より古いエントリは自動で削除されます。セキュリティ監査の実行記録は別に保存され、実際に監査を行ったときだけ書き込まれます。
 
 エンジンは bash + jq + OpenSSH のみ。Pythonもエージェントもデーモンも不要です。
 ヘルパースクリプト（`triage`、`rollback_gen`、`ios_session.sh`）も bash + awk。
@@ -28,6 +28,8 @@ Python（標準ライブラリのみ）を使うのは任意の監査ゲート�
 | Juniper Junos | 対話型PTY | `show configuration \| display set` | `commit`（設定モード内で実行） |
 | Fortinet FortiGate | 対話型PTY | `show full-configuration` | 自動（入力時に即反映） |
 | MikroTik RouterOS | execモード（`ssh -T`） | `/export` | 自動 |
+| Linux（SSH） | execモード（`ssh -T`） | `uname -a`＋os-release のスナップショット | —（コンフィグモデルなし） |
+| Windows（OpenSSH、cmd.exe） | exec-arg（`ssh host "cmd"`） | `systeminfo` のスナップショット | —（コンフィグモデルなし） |
 
 レガシー暗号（古いCiscoイメージ）にも対応：`diffie-hellman-group14-sha1`、`ssh-rsa`、`aes128-cbc`、`hmac-sha1` を必要に応じてネゴシエートします。
 
@@ -114,10 +116,9 @@ ntn sync <ref|all>
 
 ## セキュリティに関する注意
 
-- パスワードは `~/.ntnroute/devices.json` に**平文**で保存されます（モード600、所有者のみ）。ラボツールとしての意図的なトレードオフです — 許容できない場合は本番環境に向けないでください。
-- `ntn show <ref>` はデフォルトでパスワードをマスクします。`--reveal` で表示します。
-- `devices.json` と `backups/` は .gitignore 済みです。**絶対にコミットしないでください。**
-
+- パスワードは `~/.ntnroute/devices.json` に**平文**で保存されます（モード600、所有者のみ）。ファイルがマシンの外に広がらないよう、厳重に管理してください。
+- `ntn show <ref>` はデフォルトでパスワードをマスクします。
+- `~/.ntnroute/backups/` のコンフィグバックアップにも同じデバイスの秘密が含まれます — 同様に慎重に扱ってください。
 ## ステータスと正直さ
 
 実機でエンドツーエンド検証済み：Cisco IOS 15.4 と MikroTik RouterOS 7.18.2（add/list/show/exec/sync、config + ポストチェック、ロールバック、破壊的コマンド、到達不能デバイスのガード、デバイスエラーのガード）。その他のブランド（Huawei VRP、Arista EOS、Aruba AOS-CX、Ruijie RGOS、Juniper Junos、Fortinet FortiGate）は、エミュレートしたベンダーCLIに対して同じ手順で検証しています（ローカルのテストハーネスで、ツールキットには含まれません）。

@@ -7,11 +7,11 @@ SSH-based network device engine for AI agents: a small device inventory, safe CL
 ## What it does
 
 - **Inventory** — register devices once (`ntn add`); the engine tests the SSH connection, pulls the hostname and running config, and only then saves. Stored in a plain JSON file (`~/.ntnroute/devices.json`, mode 600) that survives agent restarts.
-- **Read-only access** — `ntn exec` runs `show ...` style commands and returns the transcript.
+- **Read-only access** — the engine runs `show ...` style commands on demand and returns the transcript.
 - **Config backup** — `ntn sync` pulls the running config into the inventory and a timestamped backup file; every successful change (and rollback) publishes an archive pair under `~/.ntnroute/backups/<host>/<YYYY-MM>/`, capped at 4 per month and kept for the last 3 months plus one yearly keeper.
 - **Gated config changes** — `ntn config` performs: pre-change snapshot → apply → save → post-check (every script line must appear in the new config) → inventory update. Unreachable device before the change? It aborts. Device rejects a line? It reports failure and leaves the inventory untouched.
-- **Rollback** — every change stores a checkpoint; `ntn rollback` applies the stored undo script.
-- **Audit trail** — every config/rollback attempt is logged *before* it touches the device (`config-pending`), then settled: `config-ok`/`config-failed`/`config-aborted` + a `config-started` marker for the record. `ntn audit` filters serve troubleshooting and security review: `pending` (attempts with no verdict at all — a process killed mid-apply), `failed`, `config`, `all`. Entries older than 105 days are pruned automatically; security-audit runs are recorded separately, only when an audit is actually performed.
+- **Rollback** — every change stores a checkpoint; the stored undo script can be replayed on request.
+- **Audit trail** — every config/rollback attempt is logged *before* it touches the device (`config-pending`), then settled: `config-ok`/`config-failed`/`config-aborted` + a `config-started` marker for the record. the change log's filters serve troubleshooting and security review: `pending` (attempts with no verdict at all — a process killed mid-apply), `failed`, `config`, `all`. Entries older than 105 days are pruned automatically; security-audit runs are recorded separately, only when an audit is actually performed.
 
 The engine is bash + jq + OpenSSH only — no Python, no agents, no daemons. The
 helper scripts (`triage`, `rollback_gen`, `ios_session.sh`) are bash + awk too;
@@ -27,6 +27,8 @@ only the optional audit gates (`cfg_audit.py`, `sec_audit.py`) use stdlib Python
 | Juniper Junos | interactive PTY | `show configuration \| display set` | `commit` (inside config mode) |
 | Fortinet FortiGate | interactive PTY | `show full-configuration` | automatic (applies on input) |
 | MikroTik RouterOS | exec-mode (`ssh -T`) | `/export` | automatic |
+| Linux (SSH) | exec-mode (`ssh -T`) | `uname -a` + os-release snapshot | — (no config model) |
+| Windows (OpenSSH, cmd.exe) | exec-arg (`ssh host "cmd"`) | `systeminfo` snapshot | — (no config model) |
 
 Legacy crypto (old Cisco images) is handled: `diffie-hellman-group14-sha1`, `ssh-rsa`, `aes128-cbc`, `hmac-sha1` are negotiated when needed.
 
@@ -113,10 +115,9 @@ A config change is always: plan → approval → apply → verify. The bundled `
 
 ## Security notes
 
-- Passwords are stored **in plaintext** in `~/.ntnroute/devices.json` (mode 600, owner-only). That is a deliberate trade-off for a lab tool — do not point it at production if that is unacceptable.
-- `ntn show <ref>` masks passwords by default; `--reveal` prints them.
-- `devices.json` and `backups/` are gitignored. **Never commit them.**
-
+- Passwords are stored **in plaintext** in `~/.ntnroute/devices.json` (mode 600, owner-only). Guard that file well so it never spreads beyond the machine.
+- `ntn show <ref>` masks passwords by default.
+- Config backups under `~/.ntnroute/backups/` contain the same device secrets — treat them with the same care.
 ## Status & honesty
 
 Proven end-to-end against real devices: Cisco IOS 15.4 and MikroTik RouterOS 7.18.2 (add/list/show/exec/sync, config + post-check, rollback, destructive commands, unreachable-device guard, device-error guard). The other brands (Huawei VRP, Arista EOS, Aruba AOS-CX, Ruijie RGOS, Juniper Junos, Fortinet FortiGate) are verified the same way against emulated vendor CLIs (local test harness, not part of the toolkit).
