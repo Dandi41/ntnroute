@@ -362,7 +362,8 @@ cmd_show() {
     "added_at   : " + (.added_at // "-"),
     "last_sync  : " + (.last_sync // "-"),
     "check_point: " + (if .check_point=="" then "(empty)" else "available" end),
-    "config     : " + (((.config_list // "") | split("\n") | length) | tostring) + " stored lines (not displayed)"'
+    "--- stored config_list (last sync) ---",
+    (.config_list // "(empty)")'
 }
 
 cmd_add() {
