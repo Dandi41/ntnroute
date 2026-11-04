@@ -27,7 +27,7 @@ Python stdlib.
 | Aruba / Arista / Ruijie | PTY interaktif | `show running-config` | `write memory` |
 | Juniper Junos | PTY interaktif | `show configuration \| display set` | `commit` (di dalam config mode) |
 | Fortinet FortiGate | PTY interaktif | `show full-configuration` | otomatis (langsung aktif) |
-| MikroTik RouterOS | exec-mode (`ssh -T`) | `/export` | otomatis |
+| MikroTik RouterOS | exec-mode (`ssh -T`) | `/export verbose` | otomatis |
 | Linux (SSH) | exec-mode (`ssh -T`) | snapshot `uname -a` + os-release | — (tanpa model config) |
 | Windows (OpenSSH, cmd.exe) | exec-arg (`ssh host "cmd"`) | snapshot `systeminfo` | — (tanpa model config) |
 

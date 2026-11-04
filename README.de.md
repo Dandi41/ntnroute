@@ -27,7 +27,7 @@ ebenfalls bash + awk; nur die optionalen Audit-Gates (`cfg_audit.py`,
 | Aruba / Arista / Ruijie | interaktives PTY | `show running-config` | `write memory` |
 | Juniper Junos | interaktives PTY | `show configuration \| display set` | `commit` (im Konfigurationsmodus) |
 | Fortinet FortiGate | interaktives PTY | `show full-configuration` | automatisch (wirkt sofort) |
-| MikroTik RouterOS | Exec-Modus (`ssh -T`) | `/export` | automatisch |
+| MikroTik RouterOS | Exec-Modus (`ssh -T`) | `/export verbose` | automatisch |
 | Linux (SSH) | Exec-Modus (`ssh -T`) | `uname -a` + os-release-Snapshot | — (kein Config-Modell) |
 | Windows (OpenSSH, cmd.exe) | exec-arg (`ssh host "cmd"`) | `systeminfo`-Snapshot | — (kein Config-Modell) |
 

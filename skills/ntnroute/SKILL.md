@@ -129,7 +129,7 @@ Proven end-to-end (not just designed):
 
 | Brand | Mode | Transport | Pull config | Save |
 |---|---|---|---|---|
-| Mikrotik | EXEC | `ssh -T`, commands via stdin, no PTY | `/export` | automatic (no `write memory`) |
+| Mikrotik | EXEC | `ssh -T`, commands via stdin, no PTY | `/export verbose` | automatic (no `write memory`) |
 | Cisco/Aruba/Arista/Ruijie | PTY | `ssh -tt` + paced plan | `show running-config` | `write memory` |
 | Huawei | PTY | `ssh -tt` + paced plan | `display current-configuration` | `save` + `Y` (from `system-view`: `return` first) |
 | Juniper | PTY | `ssh -tt` + paced plan | `show configuration \| display set` | `commit` **inside** config mode, then `exit configuration-mode` |
@@ -145,9 +145,9 @@ Per-brand behavior is data, not code: `~/.ntnroute/brands.json` entries override
 - **RouterOS always exits 0 even when a command fails.** Errors are detected from output patterns: `invalid value`, `no such item`, `syntax error`, `expected end of command`, `bad command name`, `ambiguous`, `failure:`. The engine has these patterns in `err_pattern`.
 - RouterOS exec-mode **does not keep context between lines**. The menu style `/interface ethernet` then `set [ find ... ]` fails (`expected end of command`) because each line runs as a standalone command. The engine normalizes scripts via `mt_normalize()`: pure path lines are merged into the next line as one full-path command. Write MikroTik scripts with the full path per line, or let the engine merge them — never rely on menu context.
 - **Destructive commands cannot be verified automatically.** `remove`/`unset`/`disable`/`reset` remove their own object, so the tokens inside them must NOT appear in the export. Positive-line verification would always fail. The engine marks them UNCHECKED = check manually. Do not read that as a failure.
-- **Empty values vanish from `/export`.** `comment=""` produces no token, so it cannot be matched. The engine marks it UNCHECKED, not MISSING. A rollback that clears a comment will always show UNCHECKED=1 — normal.
+- **Empty values vanish from `/export verbose`.** `comment=""` produces no token, so it cannot be matched. The engine marks it UNCHECKED, not MISSING. A rollback that clears a comment will always show UNCHECKED=1 — normal.
 - RouterOS exec-mode returns **exit 1** when a command is rejected; an older engine message wrongly called this "session dropped". Fixed: auth/disconnect are detected separately, and exit!=0 in exec-mode is treated as a command error with the output content reported.
-- MikroTik post-check verification cannot use exact-line grep: `/export` reorders arguments (alphabetically) and folds long lines with `\`. The engine uses `verify_mikrotik`: every `key=value` token in the script is searched as a substring of the export with spaces/quotes/backslashes stripped. Context lines without `=` (e.g. `/ip address`) go to the UNCHECKED list = normal.
+- MikroTik post-check verification cannot use exact-line grep: `/export verbose` reorders arguments (alphabetically) and folds long lines with `\`. The engine uses `verify_mikrotik`: every `key=value` token in the script is searched as a substring of the export with spaces/quotes/backslashes stripped. Context lines without `=` (e.g. `/ip address`) go to the UNCHECKED list = normal.
 - MikroTik hostname from `/system identity print` → the `name:` field. **That name is the device identity, not a misread** — a device can have an identity like `office-router-1` regardless of its board model. Do not "fix" it to the model/board.
 
 ### General

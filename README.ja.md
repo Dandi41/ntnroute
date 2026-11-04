@@ -27,7 +27,7 @@ Python（標準ライブラリのみ）を使うのは任意の監査ゲート�
 | Aruba / Arista / Ruijie | 対話型PTY | `show running-config` | `write memory` |
 | Juniper Junos | 対話型PTY | `show configuration \| display set` | `commit`（設定モード内で実行） |
 | Fortinet FortiGate | 対話型PTY | `show full-configuration` | 自動（入力時に即反映） |
-| MikroTik RouterOS | execモード（`ssh -T`） | `/export` | 自動 |
+| MikroTik RouterOS | execモード（`ssh -T`） | `/export verbose` | 自動 |
 | Linux（SSH） | execモード（`ssh -T`） | `uname -a`＋os-release のスナップショット | —（コンフィグモデルなし） |
 | Windows（OpenSSH、cmd.exe） | exec-arg（`ssh host "cmd"`） | `systeminfo` のスナップショット | —（コンフィグモデルなし） |
 

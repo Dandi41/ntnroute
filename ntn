@@ -167,7 +167,10 @@ save_delay()   { if brand_has "$1" save_delay; then brand_get "$1" save_delay; r
 config_cmd_show() { # full config pull command
   if brand_has "$1" config_show; then brand_get "$1" config_show; return; fi
   case "$1" in
-    Mikrotik) echo "/export";;
+    # RouterOS normal export suppresses properties whose values are defaults.
+    # Use verbose so an explicitly applied default (for example OSPF version=2)
+    # remains visible to the post-check verifier.
+    Mikrotik) echo "/export verbose";;
     Huawei)   echo "display current-configuration";;
     Juniper)  echo "show configuration | display set";;
     Fortinet) echo "show full-configuration";;
@@ -618,11 +621,16 @@ verify_exact() { # newcfg script
     line="${line%$'\r'}"
     n=$(sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//; s/[[:space:]]+/ /g' <<<"$line")
     case "$n" in ''|'!'*|'#'*|end|exit|'configure terminal'|configure) continue;; esac
-    if [[ $n == "no "* ]]; then
-      UNCHECKED+=("$n")
-    else
-      grep -Fxq -- "$n" "$normfile" || MISSING+=("$n")
-    fi
+    # Reset/default operations are intentionally absent from the resulting
+    # running configuration on many vendors. They need a read-back assertion
+    # chosen by the workflow, not a literal line match; never make them a
+    # false failure of the config transaction.
+    case "$n" in
+      "no "*|"undo "*|"delete "*|"unset "*|"default "*|"no shutdown"|"deactivate "*)
+        UNCHECKED+=("$n (state-reset/default operation — verify read-back)")
+        ;;
+      *) grep -Fxq -- "$n" "$normfile" || MISSING+=("$n");;
+    esac
   done < "$script"
   rm -f "$normfile"
 }

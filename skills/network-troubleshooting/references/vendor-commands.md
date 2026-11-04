@@ -48,7 +48,7 @@ The `ntn` engine already handles pagination, enable/secret, and session modes.
 | L7 | `/ip service print` | Services (ssh, www, api) |
 | General | `/log print` | Log |
 | General | `/system resource print` | CPU, memory, uptime |
-| General | `/export` | Full config |
+| General | `/export verbose` | Full config |
 | General | `/tool torch` | Traffic monitoring (interactive) |
 | General | `/tool ping <ip>` | Ping with extra options |
 

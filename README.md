@@ -26,7 +26,7 @@ only the optional audit gates (`cfg_audit.py`, `sec_audit.py`) use stdlib Python
 | Aruba / Arista / Ruijie | interactive PTY | `show running-config` | `write memory` |
 | Juniper Junos | interactive PTY | `show configuration \| display set` | `commit` (inside config mode) |
 | Fortinet FortiGate | interactive PTY | `show full-configuration` | automatic (applies on input) |
-| MikroTik RouterOS | exec-mode (`ssh -T`) | `/export` | automatic |
+| MikroTik RouterOS | exec-mode (`ssh -T`) | `/export verbose` | automatic |
 | Linux (SSH) | exec-mode (`ssh -T`) | `uname -a` + os-release snapshot | — (no config model) |
 | Windows (OpenSSH, cmd.exe) | exec-arg (`ssh host "cmd"`) | `systeminfo` snapshot | — (no config model) |
 

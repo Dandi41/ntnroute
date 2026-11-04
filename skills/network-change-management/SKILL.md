@@ -128,7 +128,7 @@ Config-only audit (no pending change): `python3 $S/cfg_audit.py <file.cfg> --mgm
 - **Huawei rolls back with `undo`, Juniper with `delete`.** `rollback_gen --vendor huawei|juniper` emits those prefixes; a Junos `set X` line rolls back as `delete X` (the `set` keyword is dropped).
 - **`no shutdown` rollbacks re-shut the link.** Emitted with a `# WARNING` comment — that is the blast-radius case; decide consciously, don't paste blindly.
 - **TODO lines are deliberately incomplete commands.** The pre-change value exists only in the pre-change snapshot, never in the change script; the tool refuses to guess.
-- Vendor auto-detects from config text (RouterOS `/export` vs Cisco-style); pass `--vendor` only for ambiguous files.
+- Vendor auto-detects from config text (RouterOS `/export verbose` vs Cisco-style); pass `--vendor` only for ambiguous files.
 
 ## Verification (proven against snapshots from the lab Cisco router and the lab RouterOS device)
 

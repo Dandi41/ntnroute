@@ -66,7 +66,7 @@ A `%` at the start of a line is worth treating as an error even without the word
 | H3C / Comware | `screen-length disable` | `display current-configuration` | `save force` | `system-view` | no |
 | Aruba | `no page` | `show running-config` | `write memory` | `configure terminal` | no |
 | Juniper | `set cli screen-length 0` | `show configuration \| display set` | `commit` | `configure` | no |
-| MikroTik | none needed | `/export compact` | none (applies on input) | none | no |
+| MikroTik | none needed | `/export verbose` | none (applies on input) | none | no |
 | FortiGate | none needed | `show full-configuration` | none (applies on input) | none | no |
 
 Brand strings arrive as whatever the user typed. Normalise case and map
