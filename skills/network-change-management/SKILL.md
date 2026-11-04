@@ -84,10 +84,7 @@ $S/rollback_gen change.cmd --existing-config <synced>.cfg --out rollback.cmd
    gated config operation, handing it both the change script and the rollback
    script plus the plan reason (invocation: `ntnroute` →
    `references/engine-commands.md`).
-9. Verify with the command promised in block 4: run it read-only through the
-   engine's exec operation, quote the device's
-   own output line, and compare against the expected token. The apply's
-   post-check passing is not verification — read the state back.
+9. Verify with the exact read-only commands promised in block 4; this needs no new user approval. Quote the device's own output line and compare it against the expected state. `STATUS: APPLIED` only says the device did not reject submitted CLI commands; it is not functional verification.
 10. Report: changed lines confirmed, verification output, config_list/check_point
     updated. If anything is missing, say so plainly and stop.
 
