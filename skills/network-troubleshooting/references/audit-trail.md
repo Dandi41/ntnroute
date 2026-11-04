@@ -7,13 +7,17 @@ device.
 
 ## Filters
 
+All `ntn audit`/`ntn exec`/`ntn rollback` calls below are internal engine
+commands — run them with the `NTN_INTERNAL=1` prefix (the engine refuses
+them without it).
+
 ```bash
-ntn audit              # last 20 entries, all actions
-ntn audit 50           # last 50
-ntn audit pending      # attempts with NO verdict at all
-ntn audit failed       # every failure (add/sync/config/rollback), newest last
-ntn audit config 50    # config + rollback lifecycle only
-ntn audit all 100      # everything, last 100
+NTN_INTERNAL=1 ntn audit              # last 20 entries, all actions
+NTN_INTERNAL=1 ntn audit 50           # last 50
+NTN_INTERNAL=1 ntn audit pending      # attempts with NO verdict at all
+NTN_INTERNAL=1 ntn audit failed       # every config/rollback failure, newest last
+NTN_INTERNAL=1 ntn audit config 50    # config + rollback lifecycle only
+NTN_INTERNAL=1 ntn audit all 100      # everything, last 100
 ```
 
 ## Action vocabulary
@@ -26,17 +30,25 @@ ntn audit all 100      # everything, last 100
 | `config-failed` | Rejected or unverified | Device error output is in the transcript; `config_list` unchanged |
 | `config-aborted` | Died before/while applying | Pre-snapshot guard fired or the session was cut |
 | `rollback` | Rollback succeeded | `check_point` was consumed |
-| `sync`, `sync-failed` | Config pull | Baseline availability |
-| `add`, `add-failed` | Inventory change | Who registered what, when |
-| `remove` | Device removed | — |
+| `rollback-failed` | Rollback apply rejected | The undo script did not land; snapshots are still in `~/.ntnroute/backups/` — investigate before retrying |
+
+## Retention
+
+The change log is pruned on **every write**: entries older than **105 days**
+are deleted immediately, the log is capped at 500 entries, and only
+config/rollback lifecycle actions are kept at all. `*-pending` entries never
+age out — an unresolved pending is exactly the artifact you must see.
+Security-audit runs are stored separately (`.security_audits`, last 100 runs)
+and are only written when a security audit is actually performed.
 
 ## Troubleshooting procedure
 
 1. `ntn audit pending` — anything here means an apply died mid-flight and the
    device may not match the inventory's `config_list`. **Verify the live config
    before trusting anything in the inventory.**
-2. `ntn audit failed` — the failure history: repeated `sync-failed` means
-   reachability/auth, `config-failed` means a rejected script.
+2. `ntn audit failed` — the failure history: `config-failed`/`rollback-failed`
+   mean a rejected script. (Sync/add attempts are not logged — reachability
+   history comes from the device itself, not the trail.)
 3. `ntn audit config 50` — the change timeline: did someone change this device
    shortly before the outage started? Was there an attempted change that never
    reported a verdict?

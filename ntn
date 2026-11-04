@@ -322,7 +322,7 @@ cmd_list() {
 cmd_show() {
   [ $# -ge 1 ] || die "usage: ntn show <ref> [--reveal]"
   local id; id=$(resolve_ref "$1"); [ -n "$id" ] || die "device not found: $1"
-  local reveal=0; [ "${2:-}" = "--reveal" ] && reveal=1
+  local reveal=0; [ "${2:-}" = "--reveal" ] && { [ "${NTN_INTERNAL:-}" = "1" ] || die "--reveal adalah flag internal (menampilkan kredensial) — dipakai melalui skill jaringan (NTN_INTERNAL=1)"; reveal=1; }
   device_by_id "$id" | jq -r --argjson reveal "$reveal" '
     "hostname   : " + .hostname,
     "id         : " + (.id|tostring),
@@ -776,6 +776,8 @@ cmd_rollback() {
     echo "STATUS: ROLLBACK SUCCESS — check_point cleared"
   else
     rm -f "$rbtmp"
+    audit "rollback-failed" "$hostname: rollback apply failed — check manually; snapshots are in $BACKUP_DIR"
+    PENDING_AUDIT=""; audit_settle
     die "rollback failed — check manually; snapshots are in $BACKUP_DIR"
   fi
   rm -f "$rbtmp"
@@ -933,6 +935,13 @@ EOF
 
 main() {
   local sub=${1:-help}; shift || true
+  # Internal commands are skill-owned: a direct run without the gate variable
+  # is refused, so the shell menu stays public-only (list/add/remove/show/sync).
+  case " exec ping config rollback checkpoints audit security-audit security-audit-list security-audit-show " in
+    *" $sub "*)
+      [ "${NTN_INTERNAL:-}" = "1" ] || die "'ntn $sub' adalah command internal untuk skill jaringan, bukan menu publik.
+Jalankan melalui skill yang bersangkutan (agent menyetel NTN_INTERNAL=1), atau lihat menu publik: ntn help";;
+  esac
   case "$sub" in
     list) cmd_list;;
     add) cmd_add "$@";;

@@ -8,10 +8,10 @@ SSH-based network device engine for AI agents: a small device inventory, safe CL
 
 - **Inventory** — register devices once (`ntn add`); the engine tests the SSH connection, pulls the hostname and running config, and only then saves. Stored in a plain JSON file (`~/.ntnroute/devices.json`, mode 600) that survives agent restarts.
 - **Read-only access** — `ntn exec` runs `show ...` style commands and returns the transcript.
-- **Config backup** — `ntn sync` pulls the running config into the inventory and a timestamped backup file.
+- **Config backup** — `ntn sync` pulls the running config into the inventory and a timestamped backup file; every successful change (and rollback) publishes an archive pair under `~/.ntnroute/backups/<host>/<YYYY-MM>/`, capped at 4 per month and kept for the last 3 months plus one yearly keeper.
 - **Gated config changes** — `ntn config` performs: pre-change snapshot → apply → save → post-check (every script line must appear in the new config) → inventory update. Unreachable device before the change? It aborts. Device rejects a line? It reports failure and leaves the inventory untouched.
 - **Rollback** — every change stores a checkpoint; `ntn rollback` applies the stored undo script.
-- **Audit trail** — every config/rollback attempt is logged *before* it touches the device (`config-pending`), then settled: `config-ok`/`config-failed`/`config-aborted` + a `config-started` marker for the record. `ntn audit` filters serve troubleshooting and security review: `pending` (attempts with no verdict at all — a process killed mid-apply), `failed`, `config`, `all`.
+- **Audit trail** — every config/rollback attempt is logged *before* it touches the device (`config-pending`), then settled: `config-ok`/`config-failed`/`config-aborted` + a `config-started` marker for the record. `ntn audit` filters serve troubleshooting and security review: `pending` (attempts with no verdict at all — a process killed mid-apply), `failed`, `config`, `all`. Entries older than 105 days are pruned automatically; security-audit runs are recorded separately, only when an audit is actually performed.
 
 The engine is bash + jq + OpenSSH only — no Python, no agents, no daemons. The
 helper scripts (`triage`, `rollback_gen`, `ios_session.sh`) are bash + awk too;
@@ -53,7 +53,7 @@ Fields: `paging`, `secret_cmd`, `config_enter`, `config_leave`, `save_lines` (ar
 
 ## Install
 
-Requirements: Linux/macOS with `bash`, `jq`, `ssh` (OpenSSH). macOS needs GNU coreutils for `timeout` (`brew install coreutils`).
+Requirements: Linux, macOS, or Windows (via Git for Windows) with `bash`, `jq`, `ssh` (OpenSSH). macOS needs GNU coreutils for `timeout` (`brew install coreutils`).
 
 ```bash
 git clone https://github.com/Dandi41/ntnroute.git
@@ -67,6 +67,21 @@ The installer:
 2. installs the engine to `~/.ntnroute/ntn` (mode 700) and symlinks it as `~/.local/bin/ntn`,
 3. creates `~/.ntnroute/` with an empty inventory (mode 600),
 4. if you use [Hermes Agent](https://hermes-agent.nousresearch.com), copies the five skills into `~/.hermes/skills/networking/`.
+
+### Windows (native, no WSL)
+
+NTnRoute also runs natively on Windows through Git for Windows (MSYS2 bash) — no WSL needed.
+
+1. Install [Git for Windows](https://git-scm.com/download/win) — it bundles `bash` and OpenSSH `ssh`.
+2. Open **Git Bash** and run:
+
+```bash
+git clone -b beta https://github.com/Dandi41/ntnroute.git ~/ntnroute
+cd ~/ntnroute
+bash install.sh
+```
+
+On Windows the installer detects MSYS2 automatically: the engine goes to `~/.ntnroute/ntn`, `ntn` is placed in `~/.local/bin` as a copy (Windows symlinks need privileges), and if `jq` is missing it downloads `jq.exe` into `~/.ntnroute/bin` (the engine adds that directory to `PATH` itself at runtime). If the shell cannot find `ntn` after installing, add `~/.local/bin` to your PATH as the installer suggests. Every command behaves exactly as on Linux/macOS; interactive vendor sessions run over the MSYS2 PTY. Windows support lives on the `beta` branch until it is merged.
 
 ## Quick start
 

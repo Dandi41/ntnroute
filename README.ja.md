@@ -8,10 +8,10 @@ AIエージェント向けのSSHベース・ネットワーク機器エンジン
 
 - **インベントリ** — デバイスを一度登録（`ntn add`）すると、エンジンがSSH接続をテストし、ホスト名とランニングコンフィグを取得してから保存します。保存先はプレーンなJSONファイル（`~/.ntnroute/devices.json`、パーミッション600）で、エージェントの再起動後も保持されます。
 - **読み取り専用アクセス** — `ntn exec` が `show ...` 系コマンドを実行し、トランスクリプトを返します。
-- **コンフィグバックアップ** — `ntn sync` がランニングコンフィグをインベントリとタイムスタンプ付きバックアップファイルに保存します。
+- **コンフィグバックアップ** — `ntn sync` がランニングコンフィグをインベントリとタイムスタンプ付きバックアップファイルに保存します。成功した変更（およびロールバック）ごとに `~/.ntnroute/backups/<host>/<YYYY-MM>/` へアーカイブペアが公開され、月4件まで、直近3ヶ月＋年1件が保持されます。
 - **ゲート付き設定変更** — `ntn config` は次を実行します：変更前スナップショット → 適用 → 保存 → ポストチェック（スクリプトの全行が新コンフィグに現れること） → インベントリ更新。変更前にデバイスに到達できない場合は中断。デバイスが行を拒否した場合は失敗を報告し、インベントリは変更しません。
 - **ロールバック** — 変更ごとにチェックポイントを保存。`ntn rollback` で取り消しスクリプトを適用します。
-- **監査ログ** — config/rollback の試行はデバイスに触れる*前*に記録され（`config-pending`）、その後確定します：`config-ok`/`config-failed`/`config-aborted` と、記録用の `config-started` マーカー。`ntn audit` のフィルタはトラブルシュートとセキュリティ監査向け：`pending`（判定が一切ない試行 — apply 中にプロセスが停止）、`failed`、`config`、`all`。
+- **監査ログ** — config/rollback の試行はデバイスに触れる*前*に記録され（`config-pending`）、その後確定します：`config-ok`/`config-failed`/`config-aborted` と、記録用の `config-started` マーカー。`ntn audit` のフィルタはトラブルシュートとセキュリティ監査向け：`pending`（判定が一切ない試行 — apply 中にプロセスが停止）、`failed`、`config`、`all`。 105日より古いエントリは自動で削除されます。セキュリティ監査の実行記録は別に保存され、実際に監査を行ったときだけ書き込まれます。
 
 エンジンは bash + jq + OpenSSH のみ。Pythonもエージェントもデーモンも不要です。
 ヘルパースクリプト（`triage`、`rollback_gen`、`ios_session.sh`）も bash + awk。
@@ -54,7 +54,7 @@ Python（標準ライブラリのみ）を使うのは任意の監査ゲート�
 
 ## インストール
 
-要件：`bash`、`jq`、`ssh`（OpenSSH）のあるLinux/macOS。macOS は GNU coreutils（`brew install coreutils`）が必要です。
+要件：`bash`、`jq`、`ssh`（OpenSSH）のあるLinux/macOS、または Windows（Git for Windows 経由）。macOS は GNU coreutils（`brew install coreutils`）が必要です。
 
 ```bash
 git clone https://github.com/Dandi41/ntnroute.git
@@ -68,6 +68,21 @@ cd ntnroute
 2. エンジンを `~/.ntnroute/ntn`（モード700）にインストールし、`~/.local/bin/ntn` にシンボリックリンクを作成し、
 3. 空のインベントリ（モード600）で `~/.ntnroute/` を作成し、
 4. [Hermes Agent](https://hermes-agent.nousresearch.com) を使っている場合は、5つのスキルを `~/.hermes/skills/networking/` にコピーします。
+
+### Windows（ネイティブ、WSL 不要）
+
+NTnRoute は Git for Windows（MSYS2 bash）経由で Windows でもネイティブに動作します — WSL は不要です。
+
+1. [Git for Windows](https://git-scm.com/download/win) をインストール（`bash` と OpenSSH の `ssh` 同梱）。
+2. **Git Bash** を開いて実行：
+
+```bash
+git clone -b beta https://github.com/Dandi41/ntnroute.git ~/ntnroute
+cd ~/ntnroute
+bash install.sh
+```
+
+Windows ではインストーラーが MSYS2 を自動検出します：エンジンは `~/.ntnroute/ntn` に、`ntn` はコピーとして `~/.local/bin` に置かれ（Windows のシンボリックリンクには権限が必要）、`jq` が無ければ `jq.exe` を `~/.ntnroute/bin` にダウンロードします（エンジンが実行時に自前でそのディレクトリを `PATH` に追加）。インストール後にシェルが `ntn` を見つけられない場合は、インストーラーの案内どおり `~/.local/bin` を PATH に追加してください。すべてのコマンドは Linux/macOS と同じように動作し、ベンダーとの対話セッションは MSYS2 の PTY を使います。Windows 対応は `beta` ブランチにあります（マージまで）。
 
 ## クイックスタート
 

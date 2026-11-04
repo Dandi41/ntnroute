@@ -48,7 +48,13 @@ adding/removing devices (that is the `ntnroute` skill), or plain Linux servers.
 ### 1. Define the scope
 
 Ask the user: which device, what symptom, since when, who is affected.
-Run `ntn ping <ref>` first — if ICMP does not get through, the problem is
+
+> **Engine gate:** every internal engine command (`exec`, `ping`, `config`,
+> `rollback`, `checkpoints`, `audit`, `security-audit*`) must run with the
+> `NTN_INTERNAL=1` prefix — the engine refuses them without it (they are
+> skill-owned, not part of the public `ntn help` menu).
+
+Run `NTN_INTERNAL=1 ntn ping <ref>` first — if ICMP does not get through, the problem is
 below SSH.
 
 ### 2. Pull snapshot
@@ -63,9 +69,9 @@ use `ntn ping` plus checks from another device that is still alive.
 ### 2b. Check the audit trail (additional evidence — only when the symptom could be change-related)
 
 ```bash
-ntn audit pending     # attempts with NO verdict = a session died mid-apply
-ntn audit failed      # what broke, and when
-ntn audit config 50   # the device's change timeline
+NTN_INTERNAL=1 ntn audit pending     # attempts with NO verdict = a session died mid-apply
+NTN_INTERNAL=1 ntn audit failed      # what broke, and when
+NTN_INTERNAL=1 ntn audit config 50   # the device's change timeline
 ```
 
 An unexplained entry often *is* the cause: a change applied by someone else, an
@@ -81,7 +87,7 @@ Run the per-brand commands from `references/vendor-commands.md` via
 `ntn exec <ref> '<cmd>'`. Save the output to a file:
 
 ```bash
-ntn exec <ref> 'show interfaces' 'show ip route' 'show ip arp' > out.txt
+NTN_INTERNAL=1 ntn exec <ref> 'show interfaces' 'show ip route' 'show ip arp' > out.txt
 ```
 
 ### 4. Automatic triage

@@ -51,7 +51,8 @@ def collect(ref, cmds):
     """Run ntn exec with several commands; return combined transcript."""
     argv = ["ntn", "exec", str(ref)] + list(cmds)
     try:
-        r = subprocess.run(argv, capture_output=True, text=True, timeout=300)
+        env = dict(os.environ, NTN_INTERNAL="1")  # engine gate: skill-owned call
+        r = subprocess.run(argv, capture_output=True, text=True, timeout=300, env=env)
     except (subprocess.TimeoutExpired, FileNotFoundError) as e:
         print(f"COLLECT FAILED: {e}", file=sys.stderr)
         sys.exit(2)
@@ -183,8 +184,9 @@ def audit_device(ref, mgmt_ip=None, config=None, cve=False):
                 "findings": [], "counts": {}}
 
     try:
+        env = dict(os.environ, NTN_INTERNAL="1")  # engine gate: skill-owned call
         r = subprocess.run(["ntn", "exec", str(ref)] + cmds,
-                           capture_output=True, text=True, timeout=300)
+                           capture_output=True, text=True, timeout=300, env=env)
         text = r.stdout + r.stderr
         failed = (r.returncode != 0) or auth_failed_text(text)
     except (subprocess.TimeoutExpired, FileNotFoundError) as e:

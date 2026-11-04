@@ -8,10 +8,10 @@ Engine perangkat jaringan berbasis SSH untuk AI agent: inventaris device, ekseku
 
 - **Inventaris** — daftarkan device sekali (`ntn add`); engine menguji koneksi SSH, menarik hostname dan running config, baru menyimpan. Disimpan di file JSON biasa (`~/.ntnroute/devices.json`, mode 600) yang bertahan antar restart agent.
 - **Akses read-only** — `ntn exec` menjalankan perintah `show ...` dan mengembalikan transkripnya.
-- **Backup config** — `ntn sync` menarik running config ke inventaris + file backup bertimestamp.
+- **Cadangan config** — `ntn sync` menyimpan konfigurasi berjalan ke inventaris dan file backup bertanda waktu; setiap perubahan (dan rollback) yang sukses menerbitkan pasangan arsip di `~/.ntnroute/backups/<host>/<YYYY-MM>/`, maksimal 4 per bulan, disimpan 3 bulan terakhir plus 1 arsip tahunan.
 - **Perubahan config bergerbang** — `ntn config` menjalankan: snapshot pra-perubahan → apply → save → post-check (setiap baris script harus muncul di config baru) → update inventaris. Device tak terjangkau sebelum perubahan? Abort. Device menolak satu baris? Dilaporkan gagal, inventaris tidak disentuh.
 - **Rollback** — setiap perubahan menyimpan checkpoint; `ntn rollback` menerapkan script pembatalnya.
-- **Jejak audit** — setiap percobaan config/rollback dicatat *sebelum* menyentuh device (`config-pending`), lalu disettle: `config-ok`/`config-failed`/`config-aborted` + penanda `config-started` untuk riwayat. Filter `ntn audit` untuk troubleshooting dan audit keamanan: `pending` (percobaan tanpa verdict sama sekali — proses mati di tengah apply), `failed`, `config`, `all`.
+- **Jejak audit** — setiap percobaan config/rollback dicatat *sebelum* menyentuh device (`config-pending`), lalu disettle: `config-ok`/`config-failed`/`config-aborted` + penanda `config-started` untuk riwayat. Filter `ntn audit` untuk troubleshooting dan audit keamanan: `pending` (percobaan tanpa verdict sama sekali — proses mati di tengah apply), `failed`, `config`, `all`. Entri yang berumur lebih dari 105 hari dipangkas otomatis; run audit keamanan dicatat terpisah, hanya saat audit benar-benar dilakukan.
 
 Engine hanya bash + jq + OpenSSH — tanpa Python, tanpa agent, tanpa daemon.
 Skrip pembantu (`triage`, `rollback_gen`, `ios_session.sh`) juga bash + awk;
@@ -54,7 +54,7 @@ Field: `paging`, `secret_cmd`, `config_enter`, `config_leave`, `save_lines` (arr
 
 ## Instalasi
 
-Prasyarat: Linux/macOS dengan `bash`, `jq`, `ssh` (OpenSSH). macOS butuh GNU coreutils untuk `timeout` (`brew install coreutils`).
+Prasyarat: Linux, macOS, atau Windows (lewat Git for Windows) dengan `bash`, `jq`, `ssh` (OpenSSH). macOS butuh GNU coreutils untuk `timeout` (`brew install coreutils`).
 
 ```bash
 git clone https://github.com/Dandi41/ntnroute.git
@@ -68,6 +68,21 @@ Installer akan:
 2. memasang engine ke `~/.ntnroute/ntn` (mode 700) dan symlink sebagai `~/.local/bin/ntn`,
 3. membuat `~/.ntnroute/` dengan inventaris kosong (mode 600),
 4. kalau kamu memakai [Hermes Agent](https://hermes-agent.nousresearch.com), menyalin lima skill ke `~/.hermes/skills/networking/`.
+
+### Windows (native, tanpa WSL)
+
+NTnRoute juga berjalan native di Windows melalui Git for Windows (bash MSYS2) — tanpa WSL.
+
+1. Pasang [Git for Windows](https://git-scm.com/download/win) — sudah menyertakan `bash` dan `ssh` OpenSSH.
+2. Buka **Git Bash**, lalu jalankan:
+
+```bash
+git clone -b beta https://github.com/Dandi41/ntnroute.git ~/ntnroute
+cd ~/ntnroute
+bash install.sh
+```
+
+Di Windows installer mendeteksi MSYS2 secara otomatis: engine terpasang di `~/.ntnroute/ntn`, `ntn` diletakkan di `~/.local/bin` sebagai salinan (symlink Windows butuh privilege), dan bila `jq` tidak ada ia mengunduh `jq.exe` ke `~/.ntnroute/bin` (engine menambahkan direktori itu ke `PATH` sendiri saat runtime). Bila shell tidak menemukan `ntn` setelah instalasi, tambahkan `~/.local/bin` ke PATH seperti saran installer. Semua command berperilaku sama seperti di Linux/macOS; sesi interaktif vendor berjalan lewat PTY MSYS2. Dukungan Windows ada di branch `beta` sampai digabung ke `main`.
 
 ## Mulai cepat
 

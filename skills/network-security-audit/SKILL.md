@@ -65,12 +65,14 @@ config rules from `cfg_audit.py`.
 
 For MULTIPLE devices (an audit usually touches more than one), use the
 engine's internal command — it runs the same battery on every matched device
-and records the run:
+and records the run. Internal engine commands require the `NTN_INTERNAL=1`
+prefix (the engine refuses them without it; `sec_audit.py` sets it itself
+when it spawns `ntn exec`):
 
 ```bash
-ntn security-audit <ref|all>          # runs the battery; prints per-device WARNING/UNREACHABLE lines
-ntn security-audit-list [N]           # recent runs
-ntn security-audit-show <run-id>      # full findings per device for one run
+NTN_INTERNAL=1 ntn security-audit <ref|all>   # runs the battery; prints per-device WARNING/UNREACHABLE lines
+NTN_INTERNAL=1 ntn security-audit-list [N]    # recent runs
+NTN_INTERNAL=1 ntn security-audit-show <run-id>   # full findings per device for one run
 ```
 
 The run is persisted in `devices.json` under `.security_audits` (last 100
@@ -83,8 +85,8 @@ of warning to the user; an unreachable device must not be treated as safe.
 ### 2b. Check the change log (additional evidence)
 
 ```bash
-ntn audit config 50    # device timeline: pending/started/ok/failed/aborted
-ntn audit pending      # attempts with NO verdict — an apply that died mid-flight
+NTN_INTERNAL=1 ntn audit config 50    # device timeline: pending/started/ok/failed/aborted
+NTN_INTERNAL=1 ntn audit pending      # attempts with NO verdict — an apply that died mid-flight
 ```
 
 Changes made outside the approval gate, or an apply that never reported a

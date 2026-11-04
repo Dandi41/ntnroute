@@ -82,13 +82,36 @@ $S/rollback_gen change.cmd --existing-config <synced>.cfg --out rollback.cmd
 6. Read `rollback.cmd` line by line, fill every `# TODO restore from snapshot:`
    from the pre-change config, narrow Mikrotik `remove [find]` placeholders.
 7. Present the five blocks from **Plan approval gate** and end the turn.
-8. Only after the explicit go-ahead: `ntn config <ref> --script change.cmd
+8. Only after the explicit go-ahead: `NTN_INTERNAL=1 ntn config <ref> --script change.cmd
    --rollback rollback.cmd --reason '<the plan reason>'`.
-9. Verify with the command promised in block 4 via `ntn exec`, quote the device's
+9. Verify with the command promised in block 4 via `NTN_INTERNAL=1 ntn exec`, quote the device's
    own output line, and compare against the expected token. `ntn config`'s
    post-check passing is not verification — read the state back.
 10. Report: changed lines confirmed, verification output, config_list/check_point
     updated. If anything is missing, say so plainly and stop.
+
+**Engine gate:** `ntn config`, `ntn exec`, `ntn rollback`, `ntn checkpoints`
+are internal engine commands — run them with the `NTN_INTERNAL=1` prefix (the
+engine refuses them without it; they are skill-owned, not in the public menu).
+
+**Undo and checkpoints.** The apply stores the rollback script in the device's
+`check_point` (devices.json) and clears it on a successful rollback:
+
+```bash
+NTN_INTERNAL=1 ntn checkpoints <ref>   # list stored checkpoints for the device
+NTN_INTERNAL=1 ntn rollback <ref>      # apply the stored check_point script
+```
+
+`ntn rollback` needs no file argument — it replays exactly what the approved
+apply stored. If the check_point is empty there is nothing to undo; do not
+improvise an undo script that was never gated.
+
+**Backup archive.** A successful apply (and a successful rollback) publishes
+a config + rollback pair under `~/.ntnroute/backups/<host>/<YYYY-MM>/` —
+this published pair is the durable archive; the pre-change snapshot exists
+only inside the running transaction and is gone once the change settles.
+Retention is automatic: max 4 archives per month per device, the last
+3 months kept in full plus one yearly keeper per device.
 
 Config-only audit (no pending change): `python3 $S/cfg_audit.py <file.cfg> --mgmt-ip <ip>` — CRIT findings end with `VERDICT: HARDENING REQUIRED` and exit 1. Those are separate work items, not blockers for unrelated changes.
 

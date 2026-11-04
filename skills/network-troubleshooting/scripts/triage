@@ -4,10 +4,10 @@
 #
 # It never touches a device. You capture, it reads:
 #
-#   ntn exec 1 'show interfaces' 'show ip route' 'show ip arp' > out.txt
+#   NTN_INTERNAL=1 ntn exec 1 'show interfaces' 'show ip route' 'show ip arp' > out.txt
 #   triage out.txt --mgmt-ip 10.0.0.5
 #
-#   ntn exec 3 '/interface print detail' '/ip route print' > out3.txt
+#   NTN_INTERNAL=1 ntn exec 3 '/interface print detail' '/ip route print' > out3.txt
 #   triage out3.txt --mgmt-ip 10.0.0.6
 #
 # Multiple files are fine. Vendor is detected from the text (--vendor overrides).

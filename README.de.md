@@ -8,10 +8,10 @@ SSH-basierte Network-Device-Engine für KI-Agenten: ein kompaktes Geräte-Invent
 
 - **Inventar** — Geräte einmal registrieren (`ntn add`); die Engine testet die SSH-Verbindung, zieht Hostname und laufende Konfiguration und speichert erst dann. Gespeichert wird in einer einfachen JSON-Datei (`~/.ntnroute/devices.json`, Modus 600), die Agent-Neustarts überlebt.
 - **Nur-Lese-Zugriff** — `ntn exec` führt `show ...`-Befehle aus und liefert das Transkript zurück.
-- **Config-Backup** — `ntn sync` zieht die Running-Config ins Inventar und in eine Backup-Datei mit Zeitstempel.
+- **Config-Backup** — `ntn sync` zieht die Running-Config ins Inventar und in eine Backup-Datei mit Zeitstempel; jede erfolgreiche Änderung (und jeder Rollback) veröffentlicht ein Archivpaar unter `~/.ntnroute/backups/<host>/<YYYY-MM>/`, maximal 4 pro Monat, aufbewahrt für die letzten 3 Monate plus einen jährlichen Keeper.
 - **Freigabepflichtige Config-Änderungen** — `ntn config` führt aus: Snapshot vor der Änderung → anwenden → speichern → Post-Check (jede Skriptzeile muss in der neuen Konfiguration erscheinen) → Inventar-Update. Gerät vor der Änderung nicht erreichbar? Abbruch. Gerät verwirft eine Zeile? Fehler wird gemeldet, das Inventar bleibt unangetastet.
 - **Rollback** — jede Änderung legt einen Checkpoint an; `ntn rollback` wendet das gespeicherte Rückgängig-Skript an.
-- **Audit-Trail** — jeder Config-/Rollback-Vorgang wird *vor* dem Zugriff auf das Gerät protokolliert (`config-pending`) und dann abgeschlossen: `config-ok`/`config-failed`/`config-aborted` plus ein `config-started`-Marker für die Akte. Die `ntn audit`-Filter dienen Troubleshooting und Security-Review: `pending` (Vorgänge ganz ohne Ergebnis — Prozess mitten im Apply beendet), `failed`, `config`, `all`.
+- **Audit-Trail** — jeder Config-/Rollback-Vorgang wird *vor* dem Zugriff auf das Gerät protokolliert (`config-pending`) und dann abgeschlossen: `config-ok`/`config-failed`/`config-aborted` plus ein `config-started`-Marker für die Akte. Die `ntn audit`-Filter dienen Troubleshooting und Security-Review: `pending` (Vorgänge ganz ohne Ergebnis — Prozess mitten im Apply beendet), `failed`, `config`, `all`. Einträge älter als 105 Tage werden automatisch entfernt; Security-Audit-Läufe werden separat aufgezeichnet, nur wenn tatsächlich ein Audit durchgeführt wird.
 
 Die Engine besteht nur aus bash + jq + OpenSSH — kein Python, kein Agent, kein
 Daemon. Die Hilfsskripte (`triage`, `rollback_gen`, `ios_session.sh`) sind
@@ -54,7 +54,7 @@ Felder: `paging`, `secret_cmd`, `config_enter`, `config_leave`, `save_lines` (Ar
 
 ## Installation
 
-Voraussetzungen: Linux/macOS mit `bash`, `jq`, `ssh` (OpenSSH). macOS benötigt GNU coreutils für `timeout` (`brew install coreutils`).
+Voraussetzungen: Linux, macOS oder Windows (über Git for Windows) mit `bash`, `jq`, `ssh` (OpenSSH). macOS benötigt GNU coreutils für `timeout` (`brew install coreutils`).
 
 ```bash
 git clone https://github.com/Dandi41/ntnroute.git
@@ -68,6 +68,21 @@ Der Installer:
 2. installiert die Engine nach `~/.ntnroute/ntn` (Modus 700) und verlinkt sie als `~/.local/bin/ntn`,
 3. erstellt `~/.ntnroute/` mit leerem Inventar (Modus 600),
 4. kopiert bei [Hermes Agent](https://hermes-agent.nousresearch.com) die fünf Skills nach `~/.hermes/skills/networking/`.
+
+### Windows (nativ, ohne WSL)
+
+NTnRoute läuft auch nativ unter Windows über Git for Windows (MSYS2-bash) — kein WSL nötig.
+
+1. Installiere [Git for Windows](https://git-scm.com/download/win) — es bringt `bash` und OpenSSH-`ssh` mit.
+2. Öffne **Git Bash** und führe aus:
+
+```bash
+git clone -b beta https://github.com/Dandi41/ntnroute.git ~/ntnroute
+cd ~/ntnroute
+bash install.sh
+```
+
+Unter Windows erkennt der Installer MSYS2 automatisch: die Engine landet in `~/.ntnroute/ntn`, `ntn` wird als Kopie in `~/.local/bin` abgelegt (Windows-Symlinks brauchen Rechte), und fehlt `jq`, lädt der Installer `jq.exe` nach `~/.ntnroute/bin` (die Engine ergänzt dieses Verzeichnis selbst zur `PATH`). Findet die Shell `ntn` nach der Installation nicht, ergänze `~/.local/bin` im PATH, wie der Installer vorschlägt. Alle Befehle verhalten sich genau wie unter Linux/macOS; interaktive Vendor-Sitzungen laufen über die MSYS2-PTY. Die Windows-Unterstützung liegt im Zweig `beta`, bis er gemergt ist.
 
 ## Schnellstart
 

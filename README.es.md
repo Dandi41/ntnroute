@@ -8,10 +8,10 @@ Motor de gestión de dispositivos de red por SSH para agentes de IA: un pequeño
 
 - **Inventario** — registra un dispositivo una vez (`ntn add`); el motor prueba la conexión SSH, obtiene el hostname y la configuración en ejecución, y solo entonces lo guarda. Todo se almacena en un archivo JSON plano (`~/.ntnroute/devices.json`, modo 600) que sobrevive a los reinicios del agente.
 - **Acceso de solo lectura** — `ntn exec` ejecuta comandos tipo `show ...` y devuelve la transcripción.
-- **Copia de seguridad** — `ntn sync` guarda la configuración en ejecución en el inventario y en un archivo de respaldo con marca de tiempo.
+- **Copia de seguridad** — `ntn sync` guarda la configuración en ejecución en el inventario y en un archivo de respaldo con marca de tiempo; cada cambio exitoso (y cada rollback) publica un par de archivo en `~/.ntnroute/backups/<host>/<YYYY-MM>/`, máximo 4 por mes, conservados los últimos 3 meses más uno anual.
 - **Cambios de configuración con puerta** — `ntn config` ejecuta: snapshot previo → aplicar → guardar → post-verificación (cada línea del script debe aparecer en la nueva configuración) → actualización del inventario. ¿Dispositivo inaccesible antes del cambio? Aborta. ¿El dispositivo rechaza una línea? Se reporta el fallo y el inventario queda intacto.
 - **Rollback** — cada cambio guarda un checkpoint; `ntn rollback` aplica el script de deshacer almacenado.
-- **Registro de auditoría** — cada intento de config/rollback se registra *antes* de tocar el dispositivo (`config-pending`) y luego se cierra: `config-ok`/`config-failed`/`config-aborted` más un marcador `config-started` para el historial. Los filtros de `ntn audit` sirven para troubleshooting y revisión de seguridad: `pending` (intentos sin veredicto alguno — proceso muerto a mitad del apply), `failed`, `config`, `all`.
+- **Registro de auditoría** — cada intento de config/rollback se registra *antes* de tocar el dispositivo (`config-pending`) y luego se cierra: `config-ok`/`config-failed`/`config-aborted` más un marcador `config-started` para el historial. Los filtros de `ntn audit` sirven para troubleshooting y revisión de seguridad: `pending` (intentos sin veredicto alguno — proceso muerto a mitad del apply), `failed`, `config`, `all`. Las entradas con más de 105 días se podan automáticamente; las ejecuciones de auditoría de seguridad se registran por separado, solo cuando realmente se realiza una auditoría.
 
 El motor es solo bash + jq + OpenSSH — sin Python, sin agentes, sin demonios.
 Los scripts auxiliares (`triage`, `rollback_gen`, `ios_session.sh`) también son
@@ -54,7 +54,7 @@ Campos: `paging`, `secret_cmd`, `config_enter`, `config_leave`, `save_lines` (ar
 
 ## Instalación
 
-Requisitos: Linux/macOS con `bash`, `jq`, `ssh` (OpenSSH). macOS necesita GNU coreutils para `timeout` (`brew install coreutils`).
+Requisitos: Linux, macOS o Windows (vía Git for Windows) con `bash`, `jq`, `ssh` (OpenSSH). macOS necesita GNU coreutils para `timeout` (`brew install coreutils`).
 
 ```bash
 git clone https://github.com/Dandi41/ntnroute.git
@@ -68,6 +68,21 @@ El instalador:
 2. instala el motor en `~/.ntnroute/ntn` (modo 700) y crea el enlace simbólico `~/.local/bin/ntn`,
 3. crea `~/.ntnroute/` con un inventario vacío (modo 600),
 4. si usas [Hermes Agent](https://hermes-agent.nousresearch.com), copia las cinco skills a `~/.hermes/skills/networking/`.
+
+### Windows (nativo, sin WSL)
+
+NTnRoute también se ejecuta de forma nativa en Windows mediante Git for Windows (bash MSYS2) — sin necesidad de WSL.
+
+1. Instala [Git for Windows](https://git-scm.com/download/win) — incluye `bash` y `ssh` de OpenSSH.
+2. Abre **Git Bash** y ejecuta:
+
+```bash
+git clone -b beta https://github.com/Dandi41/ntnroute.git ~/ntnroute
+cd ~/ntnroute
+bash install.sh
+```
+
+En Windows el instalador detecta MSYS2 automáticamente: el motor se instala en `~/.ntnroute/ntn`, `ntn` se coloca en `~/.local/bin` como copia (los symlinks de Windows requieren privilegios) y, si falta `jq`, descarga `jq.exe` en `~/.ntnroute/bin` (el motor añade ese directorio al `PATH` por sí mismo en tiempo de ejecución). Si el shell no encuentra `ntn` tras la instalación, añade `~/.local/bin` al PATH como sugiere el instalador. Todos los comandos se comportan igual que en Linux/macOS; las sesiones interactivas de fabricantes usan la PTY de MSYS2. El soporte de Windows está en la rama `beta` hasta que se fusione.
 
 ## Inicio rápido
 

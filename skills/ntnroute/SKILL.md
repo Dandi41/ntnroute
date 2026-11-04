@@ -38,23 +38,37 @@ Storage: `~/.ntnroute/devices.json` (mode 600). Backups: `~/.ntnroute/backups/`.
 
 ## Commands
 
-**Menu rule (first contact).** When the user types `ntn` alone, asks "what can ntn do", or wants the command list: run `ntn help`, then present EVERY command from the block below — all 11, each with its arguments and a clear one-line explanation of what it is for, written in the user's language. Never compress the menu into grouped bullets (e.g. "ping / exec / sync — tes & baca"), never drop commands, never replace the menu with a summary. The full menu IS the answer; a short closing question ("mau mulai dari mana?") is fine.
+**Menu rule (first contact).** When the user types `ntn` alone, asks "what can ntn do", or wants the command list: run `ntn help`, then present EVERY public command from the block below — all 5, each with its arguments and a clear one-line explanation of what it is for, written in the user's language. Never compress the menu into grouped bullets, never drop commands, never replace the menu with a summary. The full menu IS the answer; a short closing question ("mau mulai dari mana?") is fine. The engine has more capabilities, but those are internal and owned by the networking skills — they are not part of the user-facing menu.
 
 ```
-ntn list                                   # numbered list (id, hostname, ip:port, brand, last_sync)
+ntn list                                   # daftar bernomor (hostname, ip:port, type, brand — tanpa kredensial)
 ntn add <IP> <Port> <User> <Pass> <Type> <Brand> [Secret]
-ntn show <ref> [--reveal]                  # details + config_list; --reveal shows password/secret
-ntn remove <number|id>                     # after showing the list
-ntn ping <ref>
-ntn exec <ref> '<cmd>' ['<cmd2>' ...]      # CLI commands, transcript output
-ntn sync <ref|all>                         # pull running-config -> config_list + backup
-ntn config <ref> --script <file> [--rollback <file>] [--reason '<text>']
-ntn rollback <ref>
-ntn checkpoints <ref>
-ntn audit [N|pending|failed|config|all] [N]
+                                           # tes koneksi dulu, tarik hostname + config, lalu simpan
+ntn remove <number|id>                     # hapus device dari inventaris (hanya number/id)
+ntn show <ref>                             # detail device + config tersimpan (kredensial disensor)
+ntn sync <ref|all>                         # tarik running-config terbaru dari device
 ```
 
-`<ref>` = display number, `id`, `ip`, or `hostname` (case-insensitive).
+**Internal commands (agent-only).** Everything else — `exec`, `ping`, `config`,
+`rollback`, `checkpoints`, `audit`, `security-audit*`, and the `show --reveal`
+flag — is skill-owned. The engine REFUSES them without the gate variable, so a
+user typing them directly gets an error instead of a result. Every internal
+call the agent makes must carry the prefix:
+
+```
+NTN_INTERNAL=1 ntn exec <ref> '<cmd>' ['<cmd2>' ...]   # CLI commands, transcript output
+NTN_INTERNAL=1 ntn ping <ref>
+NTN_INTERNAL=1 ntn config <ref> --script <file> [--rollback <file>] [--reason '<text>']
+NTN_INTERNAL=1 ntn rollback <ref>                      # applies the stored check_point
+NTN_INTERNAL=1 ntn checkpoints <ref>
+NTN_INTERNAL=1 ntn audit [N|pending|failed|config|all] [N]
+NTN_INTERNAL=1 ntn security-audit <ref|all> [--trigger explicit|quarterly]
+NTN_INTERNAL=1 ntn security-audit-list [N]
+NTN_INTERNAL=1 ntn security-audit-show <run-id>
+NTN_INTERNAL=1 ntn show <ref> --reveal                 # the ONLY way to print credentials
+```
+
+`<ref>` = display number, `id`, `ip`, or `hostname` (case-insensitive); `remove` takes only number/id.
 
 ## Workflows
 
@@ -72,7 +86,7 @@ Do not delete immediately. `ntn list` → ask the user for the row number → `n
 
 ### Troubleshooting
 1. `ntn list` / `ntn show <ref>` for context.
-2. `ntn exec <ref> 'show ip interface brief' 'show ip route' ...` — read the real condition.
+2. `NTN_INTERNAL=1 ntn exec <ref> 'show ip interface brief' 'show ip route' ...` — read the real condition.
 3. Web research on syntax/best practices for the brand is allowed.
 4. Propose the fix + script, show the 5-block plan (plan+reason, config, rollback, verification, verdict gate), request approval.
 5. After success, clean up artifacts (scratch files in `$TMPDIR`, no logs left on the device).
@@ -99,12 +113,12 @@ $S/rollback_gen "$TMPDIR/change.cmd" \
 # MikroTik: the result contains `remove [find]` placeholders — narrow each find to the
 # object the change actually added.
 # 4. show the change + rollback to the user, ask permission, then:
-ntn config 1 --script "$TMPDIR/change.cmd" \
+NTN_INTERNAL=1 ntn config 1 --script "$TMPDIR/change.cmd" \
   --rollback "$TMPDIR/rollback.cmd" --reason 'short reason'
 ```
-The engine performs: pre snapshot → apply → save → post-check → update `config_list` + `check_point`. Success only when there are no device errors AND every script line appears in the new config.
+The engine performs: pre snapshot → apply → save → post-check → update `config_list` + `check_point` → publish the backup archive (`~/.ntnroute/backups/<host>/<YYYY-MM>/`, retention: max 4 per month, last 3 months + one yearly keeper). Success only when there are no device errors AND every script line appears in the new config.
 
-`no ...` lines are verified heuristically (they cannot be matched by grep) — check manually with `ntn exec <ref> 'show ...'`.
+`no ...` lines are verified heuristically (they cannot be matched by grep) — check manually with `NTN_INTERNAL=1 ntn exec <ref> 'show ...'`.
 
 ## Test status
 
