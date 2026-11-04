@@ -92,13 +92,13 @@ Windows ではインストーラーが MSYS2 を自動検出します：エン�
 
 ## クイックスタート
 
-NTnRoute エンジンの使い方が分からない場合は、agent に `ntn` または `ntn help` と入力してください。agent が利用可能な公開メニューを表示し、適切なワークフローを案内します。
+NTnRoute エンジンの使い方が分からない場合は、agent に `ntn` または `ntn help` と入力してください。agent が利用可能なメニューを表示し、適切なワークフローを案内します。
 
 ```bash
 # デバイスを登録（まず接続をテスト。失敗なら保存しない）
 ntn add 10.0.0.5 22 admin S3cr3t! Router Cisco enablepass123
 
-# 公開インベントリおよび設定概要メニュー
+# インベントリおよび設定概要メニュー
 ntn list
 ntn add <IP> <Port> <User> <Pass> <Type> <Brand> [Secret]
 ntn remove <number|id>

@@ -7,9 +7,8 @@ device.
 
 ## Filters
 
-All `ntn audit`/`ntn exec`/`ntn rollback` calls below are internal engine
-commands — run them with the `NTN_INTERNAL=1` prefix (the engine refuses
-them without it).
+Run every `ntn audit`/`ntn exec`/`ntn rollback` call below with the
+`NTN_INTERNAL=1` prefix (the engine refuses them without it).
 
 ```bash
 NTN_INTERNAL=1 ntn audit              # last 20 entries, all actions

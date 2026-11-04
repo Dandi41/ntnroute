@@ -92,13 +92,13 @@ Unter Windows erkennt der Installer MSYS2 automatisch: die Engine landet in `~/.
 
 ## Schnellstart
 
-Wenn du unsicher bist, wie du die NTnRoute-Engine verwendest, schreibe deinem Agenten `ntn` oder `ntn help`. Der Agent zeigt das verfügbare öffentliche Menü und führt durch den passenden Ablauf.
+Wenn du unsicher bist, wie du die NTnRoute-Engine verwendest, schreibe deinem Agenten `ntn` oder `ntn help`. Der Agent zeigt das verfügbare Menü und führt durch den passenden Ablauf.
 
 ```bash
 # Gerät registrieren (Verbindung wird zuerst getestet; bei Fehler wird nichts gespeichert)
 ntn add 10.0.0.5 22 admin S3cr3t! Router Cisco enablepass123
 
-# öffentliches Inventar- und Konfigurationsübersichtsmenü
+# Inventar- und Konfigurationsübersichtsmenü
 ntn list
 ntn add <IP> <Port> <User> <Pass> <Type> <Brand> [Secret]
 ntn remove <number|id>

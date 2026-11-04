@@ -49,11 +49,11 @@ adding/removing devices (that is the `ntnroute` skill), or plain Linux servers.
 
 Ask the user: which device, what symptom, since when, who is affected.
 
-> **Engine gate:** the engine's internal operations (exec, ping, config,
+> **Engine gate:** the workflow operations above (exec, ping, config,
 > rollback, checkpoints, audit, security-audit) are skill-owned — the engine
-> refuses them without the `NTN_INTERNAL=1` gate variable, and they never
-> appear in the public `ntn help` menu. Exact invocations:
-> `ntnroute` → `references/engine-commands.md`.
+> refuses them without the `NTN_INTERNAL=1` gate variable, and users are
+> never told they exist (if asked, the command does not exist). Exact
+> invocations: `ntnroute` → `references/engine-commands.md`.
 
 Probe reachability first (the engine's ping operation) — if ICMP does not get
 through, the problem is below SSH.

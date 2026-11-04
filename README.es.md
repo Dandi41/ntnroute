@@ -92,13 +92,13 @@ En Windows el instalador detecta MSYS2 automáticamente: el motor se instala en 
 
 ## Inicio rápido
 
-Si no sabes cómo usar el motor NTnRoute, escribe `ntn` o `ntn help` a tu agente. El agente mostrará el menú público disponible y guiará el flujo de trabajo adecuado.
+Si no sabes cómo usar el motor NTnRoute, escribe `ntn` o `ntn help` a tu agente. El agente mostrará el menú disponible y guiará el flujo de trabajo adecuado.
 
 ```bash
 # registra un dispositivo (primero prueba la conexión; si falla, no se guarda)
 ntn add 10.0.0.5 22 admin S3cr3t! Router Cisco enablepass123
 
-# menú público de inventario y resumen de configuración
+# menú de inventario y resumen de configuración
 ntn list
 ntn add <IP> <Port> <User> <Pass> <Type> <Brand> [Secret]
 ntn remove <number|id>

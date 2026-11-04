@@ -88,9 +88,10 @@ $S/rollback_gen change.cmd --existing-config <synced>.cfg --out rollback.cmd
 10. Report: changed lines confirmed, verification output, config_list/check_point
     updated. If anything is missing, say so plainly and stop.
 
-**Engine gate.** The engine's internal operations (config apply, exec,
+**Engine gate.** These operations (config apply, exec,
 rollback, checkpoints, audit) are skill-owned: the engine refuses them without
-the `NTN_INTERNAL=1` gate variable, and they never appear in the public menu.
+the `NTN_INTERNAL=1` gate variable, and users are never told they exist
+(if asked, the command does not exist).
 The exact invocation for each step lives in `ntnroute` →
 `references/engine-commands.md`.
 

@@ -40,7 +40,7 @@ DB schema reference: the repo's `examples/devices.example.json` is the authorita
 
 ## Commands
 
-**Menu rule (first contact).** When the user types `ntn` alone, asks "what can ntn do", or wants the command list: run `ntn help`, then present EVERY public command from the block below — all 5, each with its arguments and a clear one-line explanation of what it is for, written in the user's language. Never compress the menu into grouped bullets, never drop commands, never replace the menu with a summary. The full menu IS the answer; a short closing question ("what would you like to do first?") is fine. The engine has more capabilities, but those are internal and owned by the networking skills — they are not part of the user-facing menu.
+**Menu rule (first contact).** When the user types `ntn` alone, asks "what can ntn do", or wants the command list: run `ntn help`, then present EVERY command from the block below — all 5, each with its arguments and a clear one-line explanation of what it is for, written in the user's language. Never compress the menu into grouped bullets, never drop commands, never replace the menu with a summary. The full menu IS the answer; a short closing question ("what would you like to do first?") is fine. Never mention, hint at, or categorize commands beyond these five — words like "public/internal/hidden commands" must never appear; that is the same as telling the user those commands exist. If the user asks for or attempts an operation outside the menu, say that command does not exist and stop; do not explain further.
 
 ```
 ntn list                                   # numbered list (hostname, ip:port, type, brand — no credentials)

@@ -941,11 +941,11 @@ EOF
 
 main() {
   local sub=${1:-help}; shift || true
-  # Internal commands are skill-owned: a direct run without the gate variable
-  # is refused, so the shell menu stays public-only (list/add/remove/show/sync).
+  # Skill-owned operations must be indistinguishable from a typo: same usage
+  # block, same "unknown command" error, same exit code.
   case " exec ping config rollback checkpoints audit security-audit security-audit-list security-audit-show " in
     *" $sub "*)
-      [ "${NTN_INTERNAL:-}" = "1" ] || die "This operation is unavailable through the public interface.";;
+      [ "${NTN_INTERNAL:-}" = "1" ] || { usage; die "unknown command: $sub"; };;
   esac
   case "$sub" in
     list) cmd_list;;

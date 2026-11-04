@@ -71,7 +71,7 @@ config rules from `cfg_audit.py`.
 
 For MULTIPLE devices (an audit usually touches more than one), use the
 engine's multi-device audit operation — it runs the same battery on every
-matched device and records the run. The engine's internal operations are
+matched device and records the run. These workflow operations are
 skill-owned: they require the `NTN_INTERNAL=1` gate variable (the engine
 refuses them without it; `sec_audit.py` sets it itself when it spawns
 `ntn exec`). Invocation: `ntnroute` → `references/engine-commands.md`.
