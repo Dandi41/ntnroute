@@ -15,7 +15,7 @@ Motor de gestión de dispositivos de red por SSH para agentes de IA: un pequeño
 
 El motor es solo bash + jq + OpenSSH — sin Python, sin agentes, sin demonios.
 Los scripts auxiliares (`triage`, `rollback_gen`, `ios_session.sh`) también son
-bash + awk; solo las compuertas de auditoría opcionales (`cfg_audit.py`,
+bash + awk; solo las herramientas de auditoría de seguridad (`cfg_audit.py`,
 `sec_audit.py`) usan Python estándar.
 
 ## Plataformas soportadas

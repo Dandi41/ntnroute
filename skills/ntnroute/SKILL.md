@@ -86,15 +86,9 @@ interface Ethernet0/2
  description uplink-BACKBONE
  no shutdown
 EOF
-# 2. fresh baseline + blast-radius gate — MANDATORY (network-change-management skill)
+# 2. fresh baseline — MANDATORY (network-change-management skill)
 ntn sync <ref>   # refresh config_list from the device; the snapshot lands in ~/.ntnroute/backups/<host>/<YYYY-MM>/<stamp>-sync.cfg
 S=~/.hermes/skills/networking/network-change-management/scripts
-python3 $S/cfg_audit.py --change "$TMPDIR/change.cmd" \
-  --config ~/.ntnroute/backups/<host>/<YYYY-MM>/<stamp>-sync.cfg --mgmt-ip <mgmt-ip>
-# If the mgmt IP is DHCP-learned: add --mgmt-interface <iface> so lockout stays CRIT.
-# RISK INTERPRETATION: PROCEED WITH CAUTION means explain the management-path
-# risk, include recovery/rollback, and obtain explicit approval. It does not
-# deny the change.
 # 3. generate rollback, read it line by line, fill in "# TODO restore from snapshot:" from the pre-config
 $S/rollback_gen "$TMPDIR/change.cmd" \
   --existing-config ~/.ntnroute/backups/<host>/<YYYY-MM>/<stamp>-sync.cfg \

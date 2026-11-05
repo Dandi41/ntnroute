@@ -15,7 +15,7 @@ AIエージェント向けのSSHベース・ネットワーク機器エンジン
 
 エンジンは bash + jq + OpenSSH のみ。Pythonもエージェントもデーモンも不要です。
 ヘルパースクリプト（`triage`、`rollback_gen`、`ios_session.sh`）も bash + awk。
-Python（標準ライブラリのみ）を使うのは任意の監査ゲート（`cfg_audit.py`、
+Python（標準ライブラリのみ）を使うのはセキュリティ監査ツール（`cfg_audit.py`、
 `sec_audit.py`）だけです。
 
 ## 対応プラットフォーム

@@ -43,7 +43,7 @@ unplanned change.
 
 ### 5. Risk
 
-- Lines the gate flagged + why they are still safe:
+- Lines that carry risk (especially the management path) + why they are still safe:
   - `line 2: description only` → cosmetic, does not change forwarding.
 - Management path: `<ip>` via `<iface>` — untouched.
 - Impact window: `<e.g. brief link-down during no shutdown>`.

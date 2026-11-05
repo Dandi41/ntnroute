@@ -15,7 +15,7 @@ SSH-basierte Network-Device-Engine für KI-Agenten: ein kompaktes Geräte-Invent
 
 Die Engine besteht nur aus bash + jq + OpenSSH — kein Python, kein Agent, kein
 Daemon. Die Hilfsskripte (`triage`, `rollback_gen`, `ios_session.sh`) sind
-ebenfalls bash + awk; nur die optionalen Audit-Gates (`cfg_audit.py`,
+ebenfalls bash + awk; nur die Security-Audit-Werkzeuge (`cfg_audit.py`,
 `sec_audit.py`) nutzen Standard-Python.
 
 ## Unterstützte Plattformen

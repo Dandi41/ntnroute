@@ -225,7 +225,7 @@ def audit_device(ref, mgmt_ip=None, config=None, cve=False):
     }
     if config:
         here = os.path.dirname(os.path.abspath(__file__))
-        ca = os.path.join(here, "..", "..", "network-change-management", "scripts", "cfg_audit.py")
+        ca = os.path.join(here, "cfg_audit.py")
         if os.path.exists(ca):
             try:
                 rc = subprocess.run(["python3", ca, config, "--mgmt-ip", mgmt_ip or dev["ip"]],
@@ -338,9 +338,10 @@ def main():
     if a.config:
         here = os.path.dirname(os.path.abspath(__file__))
         # scripts/ -> skill dir -> networking/ -> sibling skill
-        ca = os.path.join(here, "..", "..", "network-change-management", "scripts", "cfg_audit.py")
+        ca = os.path.join(here, "cfg_audit.py")
         if os.path.exists(ca):
             print("\n== config findings (from cfg_audit.py) ==")
+            sys.stdout.flush()  # keep header before child output when stdout is a pipe/file
             rc = subprocess.call(["python3", ca, a.config,
                                   "--mgmt-ip", a.mgmt_ip or dev["ip"]])
             if rc not in (0, 1):

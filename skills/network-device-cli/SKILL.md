@@ -126,11 +126,10 @@ Reading is cheap; writing is not. For anything that changes state:
 3. Save the pre-change running config to a file, and write the rollback script
    before applying. `references/config-change-safety.md` has the checkpoint →
    apply → save → verify → rollback loop and the per-vendor command profiles.
-   Where the `network-change-management` skill is installed, run its gates:
-   `cfg_audit.py --change <script> --config <saved-config> --mgmt-ip <ip>`
-   exits 1 on any line that can lock you out, and `rollback_gen <script>
-   --existing-config <saved-config>` drafts the rollback — read it line by
-   line and fill its `# TODO restore from snapshot:` entries before use.
+   Where the `network-change-management` skill is installed, run its rollback
+   generator: `rollback_gen <script> --existing-config <saved-config>` drafts
+   the rollback — read it line by line and fill its
+   `# TODO restore from snapshot:` entries before use.
 4. Never send a command that can cut your own path back in: VTY/management
    interface, `access-class`, default route, the interface you are connected
    through.

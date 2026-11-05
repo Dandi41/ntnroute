@@ -119,8 +119,8 @@ run only when the user asks for one.
 
 ### 6. Remediation (only after the user approves)
 
-Hardening plan → write the script → `cfg_audit.py --change` gate → plan
-approval gate (5 blocks) → `ntn config` with rollback. All of that is the
+Hardening plan → write the script → plan approval gate (5 blocks) →
+`ntn config` with rollback. All of that is the
 `network-change-management` skill's job; this skill stops at report +
 proposal.
 
@@ -131,12 +131,12 @@ proposal.
 | `ntnroute` | inventory, transport, `ntn config`/rollback |
 | `network-device-cli` | how to SSH to devices directly (outside ntn) |
 | `network-troubleshooting` | outage diagnosis, OSI layers, `triage` |
-| `network-change-management` | change gate, approval, rollback, `cfg_audit.py` |
+| `network-change-management` | change approval, rollback generation |
 | `network-security-audit` (this) | security findings, CVE/baseline, audit report |
 
 Complementary flow: the audit (this skill) finds → the user approves
-remediation → `network-change-management` gates and applies it →
-`network-troubleshooting` verifies nothing broke.
+remediation → `network-change-management` plans it, gets approval, and
+applies it → `network-troubleshooting` verifies nothing broke.
 
 ## Pitfalls
 

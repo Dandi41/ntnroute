@@ -52,8 +52,8 @@ Irrelevant CVEs are still recorded (INFO) with the reason they are irrelevant.
 ### Hardening plan (proposed, not yet executed)
 
 Priority order: CRIT first. For each step: exact command + rollback +
-risk. Execution goes through the `network-change-management` skill (gate +
-plan approval) once you approve.
+risk. Execution goes through the `network-change-management` skill (plan
+approval + rollback) once you approve.
 
 ### Not covered
 
