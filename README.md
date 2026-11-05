@@ -113,7 +113,7 @@ A config change is always: plan → approval → apply → verify. The bundled `
 |---|---|
 | `ntnroute` | Core workflow rules for the `ntn` engine (inventory, exec, config, rollback) |
 | `network-device-cli` | SSH session mechanics per vendor, legacy crypto, credential parsing |
-| `network-change-management` | Plan/approval gate, blast-radius audit, rollback generation |
+| `network-change-management` | Plan/approval gate, rollback generation |
 | `network-troubleshooting` | OSI-first diagnosis with vendor command references |
 | `network-security-audit` | Local hardening + perimeter audit of device configs |
 

@@ -114,7 +114,7 @@ Perubahan config selalu: rencana → persetujuan → apply → verifikasi. Skill
 |---|---|
 | `ntnroute` | Aturan alur kerja inti engine `ntn` (inventaris, exec, config, rollback) |
 | `network-device-cli` | Mekanika sesi SSH per vendor, kripto lawas, parsing kredensial |
-| `network-change-management` | Gerbang rencana/persetujuan, audit blast-radius, pembuatan rollback |
+| `network-change-management` | Gerbang rencana/persetujuan, pembuatan rollback |
 | `network-troubleshooting` | Diagnosa OSI-first dengan referensi perintah vendor |
 | `network-security-audit` | Audit hardening lokal + perimeter dari config device |
 

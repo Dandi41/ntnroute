@@ -114,7 +114,7 @@ Un cambio de configuración es siempre: plan → aprobación → aplicar → ver
 |---|---|
 | `ntnroute` | Reglas de flujo de trabajo del motor `ntn` (inventario, exec, config, rollback) |
 | `network-device-cli` | Mecánica de sesiones SSH por fabricante, cripto legacy, análisis de credenciales |
-| `network-change-management` | Puerta de plan/aprobación, auditoría de blast radius, generación de rollback |
+| `network-change-management` | Puerta de plan/aprobación, generación de rollback |
 | `network-troubleshooting` | Diagnóstico OSI-first con referencias de comandos por fabricante |
 | `network-security-audit` | Auditoría de hardening local + perímetro de las configuraciones |
 

@@ -114,7 +114,7 @@ Eine Config-Änderung läuft immer: Plan → Freigabe → Anwenden → Verifizie
 |---|---|
 | `ntnroute` | Kern-Workflow-Regeln der `ntn`-Engine (Inventar, exec, config, Rollback) |
 | `network-device-cli` | SSH-Sitzungsmechanik je Hersteller, Legacy-Krypto, Credential-Parsing |
-| `network-change-management` | Plan-/Freigabe-Schranke, Blast-Radius-Audit, Rollback-Erzeugung |
+| `network-change-management` | Plan-/Freigabe-Schranke, Rollback-Erzeugung |
 | `network-troubleshooting` | OSI-first-Diagnose mit Hersteller-Kommandoreferenzen |
 | `network-security-audit` | Audit von lokaler Härtung + Perimeter der Gerätekonfigurationen |
 

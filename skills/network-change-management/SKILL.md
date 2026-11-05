@@ -120,7 +120,7 @@ Retention is automatic: max 4 archives per month per device, the last
 - **Mikrotik rollbacks are placeholders.** RouterOS has no `no` form; `rollback_gen` emits `remove [find]  # TODO: narrow the find`. Narrow it to the exact object before use.
 - **Fortinet rollbacks are placeholders too.** FortiGate needs `unset`/`delete` inside the right `config ...` context; `rollback_gen --vendor fortinet` emits `# TODO manual rollback:` per line instead of guessing.
 - **Huawei rolls back with `undo`, Juniper with `delete`.** `rollback_gen --vendor huawei|juniper` emits those prefixes; a Junos `set X` line rolls back as `delete X` (the `set` keyword is dropped).
-- **`no shutdown` rollbacks re-shut the link.** Emitted with a `# WARNING` comment — that is the blast-radius case; decide consciously, don't paste blindly.
+- **`no shutdown` rollbacks re-shut the link.** Emitted with a `# WARNING` comment — that is the risky case; decide consciously, don't paste blindly.
 - **TODO lines are deliberately incomplete commands.** The pre-change value exists only in the pre-change snapshot, never in the change script; the tool refuses to guess.
 - Vendor auto-detects from config text (RouterOS `/export verbose` vs Cisco-style); pass `--vendor` only for ambiguous files.
 

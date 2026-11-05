@@ -114,7 +114,7 @@ ntn sync <ref|all>
 |---|---|
 | `ntnroute` | `ntn` エンジンのコアワークフロールール（インベントリ、exec、config、ロールバック） |
 | `network-device-cli` | ベンダー別SSHセッションの仕組み、レガシー暗号、認証情報の解析 |
-| `network-change-management` | 計画/承認ゲート、影響範囲（ブラスト半径）監査、ロールバック生成 |
+| `network-change-management` | 計画/承認ゲート、ロールバック生成 |
 | `network-troubleshooting` | OSIファーストの診断とベンダー別コマンドリファレンス |
 | `network-security-audit` | デバイスコンフィグのローカル強化 + ペリメータ監査 |
 
