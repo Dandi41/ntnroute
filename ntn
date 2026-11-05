@@ -83,7 +83,7 @@ audit() {
   local now cutoff
   now=$(date +%s)
   cutoff=$((now - 105*86400))
-  db_write '.audit = ([.audit[] | select(.action | test("^(config-|rollback)")) | select((.action | test("pending$")) or ((.ts | fromdateiso8601) >= $cutoff))])[-500:]' --argjson cutoff "$cutoff"
+  db_write '.audit = ([(.audit // [])[] | select(.action | test("^(config-|rollback)")) | select((.action | test("pending$")) or ((.ts | fromdateiso8601) >= $cutoff))])[-500:]' --argjson cutoff "$cutoff"
   db_write '.audit += [{ts:(now|todate), action:$a, detail:$d}]' --arg a "$1" --arg d "$2"
 }
 # ---------- backup archive --------------------------------------------------
@@ -180,7 +180,7 @@ archive_pair() {
 # counts as orphaned. Filter `pending` then means only attempts with no verdict
 # at all — a process killed mid-apply.
 audit_settle() {
-  db_write '([.audit | to_entries[] | select(.value.action=="config-pending" or .value.action=="rollback-pending")] | last) as $e
+  db_write '([(.audit // []) | to_entries[] | select(.value.action=="config-pending" or .value.action=="rollback-pending")] | last) as $e
             | if $e == null then . else .audit[$e.key].action = ($e.value.action | sub("pending$"; "started")) end'
 }
 
@@ -500,17 +500,17 @@ cmd_remove() {
   rm -rf "$BACKUP_DIR/$safe"
   rm -f "$BACKUP_DIR/$safe"-*.cfg "$BACKUP_DIR/$safe"-*-rollback.cmd
 
-  db_write '.devices = [.devices[] | select(.id != $id)]
-            | .checkpoints = [.checkpoints[] | select(.hostname != $h)]
-            | .audit = [.audit[] | select((.detail | contains($h) | not) and (.detail | contains($ip) | not))]
+  db_write '.devices = [(.devices // [])[] | select(.id != $id)]
+            | .checkpoints = [(.checkpoints // [])[] | select(.hostname != $h)]
+            | .audit = [(.audit // [])[] | select((.detail | contains($h) | not) and (.detail | contains($ip) | not))]
             | .security_audits = [
-                .security_audits[]
-                | .devices = [.devices[] | select((.id != $id) and (.hostname != $h) and (.ip != $ip))]
+                (.security_audits // [])[]
+                | .devices = [(.devices // [])[] | select((.id != $id) and (.hostname != $h) and (.ip != $ip))]
                 | select(.devices | length > 0)
-                | .summary.devices = (.devices | length)
-                | .summary.complete = ([.devices[] | select(.status == "complete")] | length)
-                | .summary.unreachable = ([.devices[] | select(.status == "unreachable")] | length)
-                | .summary.critical_runs = ([.devices[] | select((.counts.CRITICAL // 0) > 0)] | length)
+                | .summary.devices = ((.devices // []) | length)
+                | .summary.complete = ([(.devices // [])[] | select(.status == "complete")] | length)
+                | .summary.unreachable = ([(.devices // [])[] | select(.status == "unreachable")] | length)
+                | .summary.critical_runs = ([(.devices // [])[] | select((.counts.CRITICAL // 0) > 0)] | length)
               ]' --argjson id "$id" --arg h "$hostname" --arg ip "$ip"
   echo "OK: device and all related records removed → $label"
 }
@@ -850,7 +850,7 @@ cmd_config() {
       echo "WARNING: no rollback script was provided"
     fi
     rm -f "$TRANSACTION_PRE" "$TRANSACTION_FINAL"; TRANSACTION_PRE=""; TRANSACTION_FINAL=""
-    db_write '.checkpoints = (.checkpoints + [{ts:(now|todate), hostname:$h, reason:$r, rollback_file:$f}])[-200:]' \
+    db_write '.checkpoints = (((.checkpoints // []) + [{ts:(now|todate), hostname:$h, reason:$r, rollback_file:$f}]))[-200:]' \
              --arg h "$hostname" --arg r "$reason" --arg f "$rbfile"
   else
     rm -f "$TRANSACTION_PRE" "$TRANSACTION_FINAL" "$rbfile"; TRANSACTION_PRE=""; TRANSACTION_FINAL=""
@@ -887,9 +887,9 @@ cmd_checkpoints() {
   [ $# -ge 1 ] || die "usage: ntn checkpoints <ref>"
   local id; id=$(resolve_ref "$1"); [ -n "$id" ] || die "device not found: $1"
   local hostname; hostname=$(device_by_id "$id" | jq -r '.hostname')
-  local n; n=$(jq --arg h "$hostname" '[.checkpoints[] | select(.hostname==$h)] | length' "$DB")
+  local n; n=$(jq --arg h "$hostname" '[(.checkpoints // [])[] | select(.hostname==$h)] | length' "$DB")
   echo "Checkpoint history for $hostname ($n entries, newest last):"
-  jq -r --arg h "$hostname" '[.checkpoints[] | select(.hostname==$h)][-10:][] | "  \(.ts) — \(.reason)\n    rollback file: \(.rollback_file)"' "$DB"
+  jq -r --arg h "$hostname" '[(.checkpoints // [])[] | select(.hostname==$h)][-10:][] | "  \(.ts) — \(.reason)\n    rollback file: \(.rollback_file)"' "$DB"
 }
 
 cmd_audit() { # ntn audit [N | pending|failed|config|all] [N]   (internal)
@@ -901,11 +901,11 @@ cmd_audit() { # ntn audit [N | pending|failed|config|all] [N]   (internal)
   esac
   local row='.[-$n:][] | "\(.ts)  \(.action)  \(.detail)"'
   case "$filter" in
-    "")      jq -r --argjson n "$n" "[.audit[]] | $row" "$DB";;
-    pending) jq -r --argjson n "$n" --arg re '^(config-pending|rollback-pending)$' "[.audit[] | select(.action | test(\$re))] | $row" "$DB";;
-    failed)  jq -r --argjson n "$n" --arg re 'failed$' "[.audit[] | select(.action | test(\$re))] | $row" "$DB";;
-    config)  jq -r --argjson n "$n" --arg re '^(config-|rollback)' "[.audit[] | select(.action | test(\$re))] | $row" "$DB";;
-    all)     jq -r --argjson n "$n" "[.audit[]] | $row" "$DB";;
+    "")      jq -r --argjson n "$n" "[(.audit // [])[]] | $row" "$DB";;
+    pending) jq -r --argjson n "$n" --arg re '^(config-pending|rollback-pending)$' "[(.audit // [])[] | select(.action | test(\$re))] | $row" "$DB";;
+    failed)  jq -r --argjson n "$n" --arg re 'failed$' "[(.audit // [])[] | select(.action | test(\$re))] | $row" "$DB";;
+    config)  jq -r --argjson n "$n" --arg re '^(config-|rollback)' "[(.audit // [])[] | select(.action | test(\$re))] | $row" "$DB";;
+    all)     jq -r --argjson n "$n" "[(.audit // [])[]] | $row" "$DB";;
     *) die "unknown audit filter: $filter (use a number, or: pending | failed | config | all)" ;;
   esac
 }
