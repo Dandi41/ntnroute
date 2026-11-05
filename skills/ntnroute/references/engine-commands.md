@@ -15,7 +15,7 @@ NTN_INTERNAL=1 ntn config <ref> --script <file> [--rollback <file>] [--reason '<
 NTN_INTERNAL=1 ntn rollback <ref>                      # applies the stored check_point
 NTN_INTERNAL=1 ntn checkpoints <ref>
 NTN_INTERNAL=1 ntn audit [N|pending|failed|config|all] [N]
-NTN_INTERNAL=1 ntn security-audit <ref|all> [--trigger explicit|quarterly]
+NTN_INTERNAL=1 ntn security-audit <ref|all>   # only on an explicit user request
 NTN_INTERNAL=1 ntn security-audit-list [N]
 NTN_INTERNAL=1 ntn security-audit-show <run-id>
 ```

@@ -22,6 +22,23 @@ BACKUP_DIR="$NTN_HOME/backups"
 LOCK_FILE="$NTN_HOME/.lock"
 TMPBASE="${TMPDIR:-/tmp}"
 
+# Every temporary file is registered at creation and removed on ANY way out —
+# normal exit, die(), or a kill signal — so aborted runs leave no litter.
+TMPFILES=""
+tmpfile() {
+  local t; t=$(mktemp "$TMPBASE/$1") || die "mktemp failed"
+  TMPFILES="$TMPFILES $t"; printf '%s' "$t"
+}
+tmpdir() {
+  local t; t=$(mktemp -d "$TMPBASE/$1") || die "mktemp failed"
+  TMPFILES="$TMPFILES $t"; printf '%s' "$t"
+}
+cleanup_tmp() { [ -n "$TMPFILES" ] && rm -rf $TMPFILES 2>/dev/null; TMPFILES=""; }
+trap 'cleanup_tmp' EXIT
+trap 'cleanup_tmp; exit 143' TERM
+trap 'cleanup_tmp; exit 130' INT
+trap 'cleanup_tmp; exit 129' HUP
+
 SSH_OPTS=(
   -o ConnectTimeout=10
   -o StrictHostKeyChecking=no
@@ -53,8 +70,8 @@ if command -v flock >/dev/null 2>&1; then exec 9>"$LOCK_FILE"; flock 9; fi
 db_write() { # filter [jq-args...] ; atomic write
   local filter=$1; shift
   local tmp err
-  tmp=$(mktemp "$TMPBASE/ntn.db.XXXXXX") || die "mktemp failed"
-  err=$(mktemp "$TMPBASE/ntn.err.XXXXXX")
+  tmp=$(tmpfile ntn.db.XXXXXX) || die "mktemp failed"
+  err=$(tmpfile ntn.err.XXXXXX)
   if jq "$filter" "$@" "$DB" > "$tmp" 2>"$err"; then
     mv "$tmp" "$DB"; chmod 600 "$DB"; rm -f "$err"
   else
@@ -80,12 +97,46 @@ month_back() {
   while [ "$n" -gt 0 ]; do m=$((m-1)); if [ "$m" -eq 0 ]; then m=12; y=$((y-1)); fi; n=$((n-1)); done
   printf '%04d-%02d' "$y" "$m"
 }
+# File legacy flat artifacts (older engine versions) into the month layout.
+# Idempotent: after one pass there is nothing left to move.
+migrate_backups() {
+  local host=$1 safe root f base stamp month dest
+  safe=$(safe_host "$host"); root="$BACKUP_DIR"
+  for f in "$root/$safe"-*.cfg "$root/$safe"-*-rollback.cmd; do
+    [ -f "$f" ] || continue
+    base=${f##*/}; base=${base#"$safe"-}
+    case "$base" in *-added.cfg|*-rollback.cmd) ;; *) continue;; esac
+    stamp=${base%-added.cfg}; stamp=${stamp%-rollback.cmd}
+    case "$stamp" in
+      [0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9]) month="${stamp:0:4}-${stamp:4:2}";;
+      *) continue;;
+    esac
+    dest="$root/$safe/$month"; mkdir -p "$dest"; chmod 700 "$dest"
+    mv "$f" "$dest/$base"
+  done
+  [ -d "$root/$safe" ] || return 0
+  for f in "$root/$safe"/*-sync.cfg; do
+    [ -f "$f" ] || continue
+    base=${f##*/}; stamp=${base%-sync.cfg}
+    case "$stamp" in
+      [0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9]) month="${stamp:0:4}-${stamp:4:2}";;
+      *) continue;;
+    esac
+    dest="$root/$safe/$month"; mkdir -p "$dest"; chmod 700 "$dest"
+    mv "$f" "$dest/$base"
+  done
+}
+
+# Month folders hold at most 4 change pairs (cfg + rollback.cmd) and 4 single
+# snapshots (-sync.cfg / -added.cfg); older months keep one keeper per year.
 retain_backups() {
-  local host=$1 root="$BACKUP_DIR/$(safe_host "$1")" dir month pair idx year current m0 m1 m2 seenyears=""
+  local host=$1 root="$BACKUP_DIR/$(safe_host "$1")" dir month pair idx year current m0 m1 m2 seenyears="" sidx syear seensyears=""
+  migrate_backups "$host"
   [ -d "$root" ] || return 0
   current=$(date +%Y-%m); m0=$current; m1=$(month_back "$current" 1); m2=$(month_back "$current" 2)
   while read -r dir; do
-    month=${dir%/}; month=${month##*/}; idx=0
+    month=${dir%/}; month=${month##*/}
+    idx=0
     while read -r pair; do
       [ -n "$pair" ] || continue
       [ -s "$dir/$pair.cfg" ] && [ -s "$dir/$pair.rollback.cmd" ] || continue
@@ -95,7 +146,18 @@ retain_backups() {
         year=${month%%-*}
         case " $seenyears " in *" $year "*) rm -f "$dir/$pair.cfg" "$dir/$pair.rollback.cmd";; *) seenyears="$seenyears $year";; esac
       fi
-    done < <(find "$dir" -maxdepth 1 -type f -name '*.cfg' -printf '%f\n' 2>/dev/null | sed 's/\.cfg$//' | sort -r)
+    done < <(find "$dir" -maxdepth 1 -type f -name '*.cfg' ! -name '*-sync.cfg' ! -name '*-added.cfg' -printf '%f\n' 2>/dev/null | sed 's/\.cfg$//' | sort -r)
+    sidx=0
+    while read -r f; do
+      [ -n "$f" ] || continue
+      case "$f" in *-rollback.cmd) [ -s "$dir/${f%.rollback.cmd}.cfg" ] && continue;; esac
+      if [ "$month" = "$m0" ] || [ "$month" = "$m1" ] || [ "$month" = "$m2" ]; then
+        sidx=$((sidx+1)); [ "$sidx" -le 4 ] || rm -f "$dir/$f"
+      else
+        syear=${month%%-*}
+        case " $seensyears " in *" $syear "*) rm -f "$dir/$f";; *) seensyears="$seensyears $syear";; esac
+      fi
+    done < <(find "$dir" -maxdepth 1 -type f \( -name '*-sync.cfg' -o -name '*-added.cfg' -o -name '*-rollback.cmd' \) -printf '%f\n' 2>/dev/null | sort -r)
     rmdir "$dir" 2>/dev/null || true
   done < <(find "$root" -mindepth 1 -maxdepth 1 -type d -printf '%p/\n' 2>/dev/null | sort -r)
   rmdir "$root" 2>/dev/null || true
@@ -105,7 +167,9 @@ archive_pair() {
   [ -s "$finalcfg" ] && [ -s "$rollback" ] || return 1
   dir=$(backup_month_for "$host" "$stamp"); mkdir -p "$dir"; chmod 700 "$dir"
   pair="$(date -d "$stamp" +%Y%m%d-%H%M%S 2>/dev/null || date +%Y%m%d-%H%M%S)-$$"
-  tmpcfg=$(mktemp "$dir/.${pair}.cfg.XXXXXX"); tmprb=$(mktemp "$dir/.${pair}.rollback.XXXXXX")
+  tmpcfg=$(mktemp "$dir/.${pair}.cfg.XXXXXX") || die "mktemp failed"
+  tmprb=$(mktemp "$dir/.${pair}.rollback.XXXXXX") || die "mktemp failed"
+  TMPFILES="$TMPFILES $tmpcfg $tmprb"
   cp "$finalcfg" "$tmpcfg" && cp "$rollback" "$tmprb" || { rm -f "$tmpcfg" "$tmprb"; return 1; }
   mv "$tmpcfg" "$dir/$pair.cfg" && mv "$tmprb" "$dir/$pair.rollback.cmd" || return 1
   chmod 600 "$dir/$pair.cfg" "$dir/$pair.rollback.cmd"
@@ -140,7 +204,7 @@ is_execarg_brand() { [ "$(brand_get "$1" mode)" = "exec-arg" ]; }
 run_exec_arg() { # ip port user pass command out timeout_s — one exec request, command as ssh argument
   local ip=$1 port=$2 user=$3 pass=$4 cmd=$5 out=$6 tmo=$7
   local work rc
-  work=$(mktemp -d "$TMPBASE/ntn.ssh.XXXXXX") || die "mktemp failed"
+  work=$(tmpdir ntn.ssh.XXXXXX) || die "mktemp failed"
   printf '#!/bin/bash\nprintf "%%s\\n" "$NTN_PW"\n' > "$work/askpass.sh"
   chmod 700 "$work/askpass.sh"
   NTN_PW="$pass" SSH_ASKPASS="$work/askpass.sh" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 \
@@ -205,7 +269,7 @@ err_pattern() {
 run_session() { # ip port user pass plan_file out_file timeout_s
   local ip=$1 port=$2 user=$3 pass=$4 plan=$5 out=$6 tmo=$7
   local work rc
-  work=$(mktemp -d "$TMPBASE/ntn.ssh.XXXXXX") || die "mktemp failed"
+  work=$(tmpdir ntn.ssh.XXXXXX) || die "mktemp failed"
   printf '#!/bin/bash\nprintf "%%s\\n" "$NTN_PW"\n' > "$work/askpass.sh"
   chmod 700 "$work/askpass.sh"
   (
@@ -228,7 +292,7 @@ run_session() { # ip port user pass plan_file out_file timeout_s
 run_exec_mode() { # ip port user pass commands_file out_file timeout_s
   local ip=$1 port=$2 user=$3 pass=$4 cmds=$5 out=$6 tmo=$7
   local work rc
-  work=$(mktemp -d "$TMPBASE/ntn.ssh.XXXXXX") || die "mktemp failed"
+  work=$(tmpdir ntn.ssh.XXXXXX) || die "mktemp failed"
   printf '#!/bin/bash\nprintf "%%s\\n" "$NTN_PW"\n' > "$work/askpass.sh"
   chmod 700 "$work/askpass.sh"
   NTN_PW="$pass" SSH_ASKPASS="$work/askpass.sh" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 \
@@ -280,15 +344,15 @@ pull_config() { # ip port user pass secret brand out_file -> exit code; out cont
     run_exec_arg "$ip" "$port" "$user" "$pass" "$(config_cmd_show "$brand")" "$out" 120
     rc=$?
   elif is_exec_brand "$brand"; then
-    local cfile; cfile=$(mktemp "$TMPBASE/ntn.cmd.XXXXXX")
+    local cfile; cfile=$(tmpfile ntn.cmd.XXXXXX)
     printf '%s\n' "$(config_cmd_show "$brand")" > "$cfile"
     run_exec_mode "$ip" "$port" "$user" "$pass" "$cfile" "$out" 90
     rc=$?
     rm -f "$cfile"
   else
     local plan transcript
-    plan=$(mktemp "$TMPBASE/ntn.plan.XXXXXX")
-    transcript=$(mktemp "$TMPBASE/ntn.tr.XXXXXX")
+    plan=$(tmpfile ntn.plan.XXXXXX)
+    transcript=$(tmpfile ntn.tr.XXXXXX)
     build_exec_plan "$brand" "$secret" "$plan" "$(config_cmd_show "$brand")"
     run_session "$ip" "$port" "$user" "$pass" "$plan" "$transcript" "$(plan_timeout "$plan")"
     rc=$?
@@ -302,7 +366,7 @@ pull_config() { # ip port user pass secret brand out_file -> exit code; out cont
 
 pull_hostname() { # ip port user pass secret brand -> stdout hostname ('' on failure)
   local ip=$1 port=$2 user=$3 pass=$4 secret=$5 brand=$6
-  local out; out=$(mktemp "$TMPBASE/ntn.hn.XXXXXX")
+  local out; out=$(tmpfile ntn.hn.XXXXXX)
   local hn=""
   if is_execarg_brand "$brand"; then
     run_exec_arg "$ip" "$port" "$user" "$pass" "$(hostname_cmd_show "$brand")" "$out" 60 || true
@@ -312,7 +376,7 @@ pull_hostname() { # ip port user pass secret brand -> stdout hostname ('' on fai
     return 0
   fi
   if is_exec_brand "$brand"; then
-    local cfile; cfile=$(mktemp "$TMPBASE/ntn.cmd.XXXXXX")
+    local cfile; cfile=$(tmpfile ntn.cmd.XXXXXX)
     printf '%s\n' "$(hostname_cmd_show "$brand")" > "$cfile"
     run_exec_mode "$ip" "$port" "$user" "$pass" "$cfile" "$out" 60 || true
     rm -f "$cfile"
@@ -321,7 +385,7 @@ pull_hostname() { # ip port user pass secret brand -> stdout hostname ('' on fai
       hn=$(awk 'NF { print; exit }' "$out" | tr -d '\r')
     fi
   else
-    local plan; plan=$(mktemp "$TMPBASE/ntn.plan.XXXXXX")
+    local plan; plan=$(tmpfile ntn.plan.XXXXXX)
     build_exec_plan "$brand" "$secret" "$plan" "$(hostname_cmd_show "$brand")"
     run_session "$ip" "$port" "$user" "$pass" "$plan" "$out" "$(plan_timeout "$plan")" || true
     rm -f "$plan"
@@ -380,8 +444,8 @@ cmd_add() {
 
   echo "Testing SSH connection to $ip:$port (user $user, $brand $type) ..."
   local cfgfile probe rc
-  cfgfile=$(mktemp "$TMPBASE/ntn.cfg.XXXXXX")
-  probe=$(mktemp "$TMPBASE/ntn.probe.XXXXXX")
+  cfgfile=$(tmpfile ntn.cfg.XXXXXX)
+  probe=$(tmpfile ntn.probe.XXXXXX)
   pull_config "$ip" "$port" "$user" "$pass" "$secret" "$brand" "$probe"
   rc=$?
   if [ $rc -ne 0 ] || auth_failed "$probe"; then
@@ -406,10 +470,13 @@ cmd_add() {
         '{id:$id, hostname:$hostname, ip:$ip, port:$port, username:$username, password:$password,
           secret:$secret, brand:$brand, type:$type, config_list:$cfg, check_point:"",
           added_at:(now|todate), last_sync:(now|todate)}') || { rm -f "$cfgfile"; die "failed to create device entry"; }
-  local bk; bk="$BACKUP_DIR/${hostname}-$(date +%Y%m%d-%H%M%S)-added.cfg"
-  cp "$cfgfile" "$bk"
+  local stamp dir bk; stamp=$(date +%Y%m%d-%H%M%S)
+  dir=$(backup_month_for "$hostname" "$stamp"); mkdir -p "$dir"; chmod 700 "$dir"
+  bk="$dir/$stamp-added.cfg"
+  cp "$cfgfile" "$bk"; chmod 600 "$bk"
   db_write '.devices += [$d] | .next_id += 1' --argjson d "$dev"
   rm -f "$cfgfile"
+  retain_backups "$hostname"
   echo "OK: device added"
   echo "  id       : $id"
   echo "  hostname : $hostname"
@@ -467,14 +534,14 @@ run_device_commands() { # ip port user pass secret brand out_file timeout cmd...
     return $?
   fi
   if is_exec_brand "$brand"; then
-    local cfile; cfile=$(mktemp "$TMPBASE/ntn.cmd.XXXXXX")
+    local cfile; cfile=$(tmpfile ntn.cmd.XXXXXX)
     printf '%s\n' "$@" > "$cfile"
     run_exec_mode "$ip" "$port" "$user" "$pass" "$cfile" "$out" "$tmo"
     local rc=$?
     rm -f "$cfile"
     return $rc
   else
-    local plan; plan=$(mktemp "$TMPBASE/ntn.plan.XXXXXX")
+    local plan; plan=$(tmpfile ntn.plan.XXXXXX)
     build_exec_plan "$brand" "$secret" "$plan" "$@"
     run_session "$ip" "$port" "$user" "$pass" "$plan" "$out" "$(plan_timeout "$plan")"
     local rc=$?
@@ -487,12 +554,13 @@ cmd_exec() {
   [ $# -ge 2 ] || die "usage: ntn exec <ref> <cmd> [cmd2 ...]"
   local id; id=$(resolve_ref "$1"); [ -n "$id" ] || die "device not found: $1"
   shift
-  local dev ip port user pass secret brand out rc
+  local dev ip port user pass secret brand hostname out rc
   dev=$(device_by_id "$id")
+  hostname=$(jq -r '.hostname' <<<"$dev")
   ip=$(jq -r '.ip' <<<"$dev");      port=$(jq -r '.port' <<<"$dev")
   user=$(jq -r '.username' <<<"$dev"); pass=$(jq -r '.password' <<<"$dev")
   secret=$(jq -r '.secret' <<<"$dev"); brand=$(jq -r '.brand' <<<"$dev")
-  out=$(mktemp "$TMPBASE/ntn.out.XXXXXX")
+  out=$(tmpfile ntn.out.XXXXXX)
   run_device_commands "$ip" "$port" "$user" "$pass" "$secret" "$brand" "$out" 120 "$@"
   rc=$?
   if [ $rc -ne 0 ] || auth_failed "$out"; then
@@ -501,8 +569,24 @@ cmd_exec() {
   fi
   cat "$out"
   local lines; lines=$(wc -l < "$out")
-  if [ "$lines" -gt 400 ]; then echo "... (transcript $lines lines; full output: $out)"; else rm -f "$out"; fi
+  if [ "$lines" -gt 400 ]; then
+    # Long transcripts stay readable for the agent, but never as /tmp litter:
+    # they move into a bounded per-engine folder (newest 50 kept).
+    local keep full
+    keep="$NTN_HOME/transcripts"; mkdir -p "$keep"; chmod 700 "$keep"
+    full="$keep/$(date +%Y%m%d-%H%M%S)-$(safe_host "$hostname").log"
+    mv "$out" "$full"; chmod 600 "$full"
+    TMPFILES="${TMPFILES// $out/}"
+    prune_transcripts
+    echo "... (transcript $lines lines; full output: $full)"
+  else rm -f "$out"; fi
   return 0
+}
+
+prune_transcripts() {
+  local d="$NTN_HOME/transcripts" f
+  [ -d "$d" ] || return 0
+  ls -1t "$d" 2>/dev/null | tail -n +51 | while read -r f; do rm -f "$d/$f"; done
 }
 
 sync_one() { # id
@@ -513,19 +597,21 @@ sync_one() { # id
   secret=$(jq -r '.secret' <<<"$dev"); brand=$(jq -r '.brand' <<<"$dev")
   hostname=$(jq -r '.hostname' <<<"$dev")
   local cfgfile rc
-  cfgfile=$(mktemp "$TMPBASE/ntn.cfg.XXXXXX")
+  cfgfile=$(tmpfile ntn.cfg.XXXXXX)
   pull_config "$ip" "$port" "$user" "$pass" "$secret" "$brand" "$cfgfile"
   rc=$?
   if [ $rc -ne 0 ] || auth_failed "$cfgfile"; then
     rm -f "$cfgfile"; echo "FAILED sync $hostname ($ip): connection/auth"; return 1
   fi
   if [ ! -s "$cfgfile" ]; then rm -f "$cfgfile"; echo "FAILED sync $hostname: empty config output"; return 1; fi
-  mkdir -p "$(backup_root_for "$hostname")"
-  cp "$cfgfile" "$(backup_root_for "$hostname")/$(date +%Y%m%d-%H%M%S)-sync.cfg"
+  local stamp dir; stamp=$(date +%Y%m%d-%H%M%S)
+  dir=$(backup_month_for "$hostname" "$stamp"); mkdir -p "$dir"; chmod 700 "$dir"
+  cp "$cfgfile" "$dir/$stamp-sync.cfg"; chmod 600 "$dir/$stamp-sync.cfg"
   db_write '(.devices[] | select(.id==$id)).config_list = $cfg
             | (.devices[] | select(.id==$id)).last_sync = (now|todate)' \
            --argjson id "$id" --rawfile cfg "$cfgfile"
   rm -f "$cfgfile"
+  retain_backups "$hostname"
   echo "OK sync $hostname ($ip)"
 }
 
@@ -599,7 +685,7 @@ apply_config() { # id script_file reason -> 0 on success
   local ts; ts=$(date +%Y%m%d-%H%M%S)
 
   # 1) pre-change snapshot (mandatory; transaction-only, never a retained archive)
-  local precfg; precfg=$(mktemp "$TMPBASE/ntn.pre.XXXXXX")
+  local precfg; precfg=$(tmpfile ntn.pre.XXXXXX)
   TRANSACTION_PRE="$precfg"; TRANSACTION_FINAL=""
   pull_config "$ip" "$port" "$user" "$pass" "$secret" "$brand" "$precfg" || true
   if [ ! -s "$precfg" ] || auth_failed "$precfg"; then
@@ -610,9 +696,9 @@ apply_config() { # id script_file reason -> 0 on success
 
   # 2) apply
   local out rc nlines eff_script
-  out=$(mktemp "$TMPBASE/ntn.out.XXXXXX")
+  out=$(tmpfile ntn.out.XXXXXX)
   # effective script: for MikroTik, normalized into full-path one-liners
-  eff_script=$(mktemp "$TMPBASE/ntn.eff.XXXXXX")
+  eff_script=$(tmpfile ntn.eff.XXXXXX)
   if is_exec_brand "$brand"; then
     nlines=$(mt_normalize "$script" "$eff_script")
   else
@@ -620,14 +706,14 @@ apply_config() { # id script_file reason -> 0 on success
     nlines=$(grep -cve '^\s*$' -e '^!' "$script")
   fi
   if is_exec_brand "$brand"; then
-    local cfile; cfile=$(mktemp "$TMPBASE/ntn.cmd.XXXXXX")
+    local cfile; cfile=$(tmpfile ntn.cmd.XXXXXX)
     cp "$eff_script" "$cfile"
     echo "Applying $nlines commands via RouterOS exec-mode ..."
     run_exec_mode "$ip" "$port" "$user" "$pass" "$cfile" "$out" 120
     rc=$?
     rm -f "$cfile"
   else
-    local plan; plan=$(mktemp "$TMPBASE/ntn.plan.XXXXXX")
+    local plan; plan=$(tmpfile ntn.plan.XXXXXX)
     local s skip_save=""
     case "$brand" in Cisco|Huawei|Aruba|Arista|Ruijie|Juniper|Mikrotik|Fortinet) ;; *)
       brand_profile "$brand" || { skip_save=1; echo "NOTE: unknown brand '$brand' — no save command sent (running-config only). Add save_lines in $BRANDS_FILE if the device needs one."; } ;;
@@ -675,7 +761,7 @@ apply_config() { # id script_file reason -> 0 on success
   # against vendor exports: renderers suppress defaults, reorder fields and
   # fold lines, which makes that a false-failure source. Functional validation
   # belongs to the agent's planned, read-only show/print commands.
-  local newcfg; newcfg=$(mktemp "$TMPBASE/ntn.post.XXXXXX")
+  local newcfg; newcfg=$(tmpfile ntn.post.XXXXXX)
   TRANSACTION_FINAL="$newcfg"
   pull_config "$ip" "$port" "$user" "$pass" "$secret" "$brand" "$newcfg" || true
   rm -f "$eff_script"
@@ -751,7 +837,10 @@ cmd_config() {
         echo "Backup archive: $archive.cfg + $archive.rollback.cmd"
         rbfile="$archive.rollback.cmd"
       else
-        chmod 600 "$rbfile"
+        # Fallback: keep the rollback beside the change archives, not loose.
+        local fdir fb
+        fdir=$(backup_month_for "$hostname" "$ts"); mkdir -p "$fdir"; chmod 700 "$fdir"
+        fb="$fdir/$(basename "$rbfile")"; mv "$rbfile" "$fb"; chmod 600 "$fb"; rbfile="$fb"
         db_write '(.devices[] | select(.id==$id)).check_point = $rb' --argjson id "$id" --rawfile rb "$rbfile"
         echo "Rollback retained: $rbfile"
       fi
@@ -776,7 +865,7 @@ cmd_rollback() {
   rb=$(device_by_id "$id" | jq -r '.check_point')
   hostname=$(device_by_id "$id" | jq -r '.hostname')
   [ -n "$rb" ] || die "check_point empty for $hostname — nothing to roll back"
-  local rbtmp; rbtmp=$(mktemp "$TMPBASE/ntn.rb.XXXXXX")
+  local rbtmp; rbtmp=$(tmpfile ntn.rb.XXXXXX)
   printf '%s\n' "$rb" > "$rbtmp"
   echo "Running rollback for $hostname ..."
   PENDING_AUDIT="$hostname (rollback): restoring check_point script ($(grep -cve '^\s*$' "$rbtmp" 2>/dev/null || echo 0) lines)"
@@ -831,16 +920,15 @@ sec_audit_py() {
   return 1
 }
 
-cmd_security_audit() { # ntn security-audit <ref|all> [--trigger explicit|quarterly]
-  local scope="" trigger="explicit"
+cmd_security_audit() { # ntn security-audit <ref|all>   (runs only on an explicit user request)
+  local scope=""
   while [ $# -gt 0 ]; do
     case "$1" in
-      --trigger) trigger=$2; shift 2;;
       -*) die "unknown option: $1";;
       *) [ -z "$scope" ] && scope=$1 || die "unknown argument: $1"; shift;;
     esac
   done
-  [ -n "$scope" ] || die "usage: ntn security-audit <ref|all> [--trigger explicit|quarterly]"
+  [ -n "$scope" ] || die "usage: ntn security-audit <ref|all>"
   local py; py=$(sec_audit_py) || die "sec_audit.py not found (install the network-security-audit skill)"
   command -v python3 >/dev/null 2>&1 || die "python3 not found (required by the security audit battery)"
 
@@ -851,7 +939,7 @@ cmd_security_audit() { # ntn security-audit <ref|all> [--trigger explicit|quarte
   local run_id; run_id="sa-$(date -u +%Y%m%dT%H%M%SZ)-$$"
   local started; started=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   db_write '.security_audits = ((.security_audits // []) + [{run_id:$id, trigger:$tr, scope:$sc, status:"running", started_at:$st, finished_at:"", summary:{}, devices:[]}])[-100:]' \
-    --arg id "$run_id" --arg tr "$trigger" --arg sc "$scope" --arg st "$started"
+    --arg id "$run_id" --arg tr "user-request" --arg sc "$scope" --arg st "$started"
 
   # Release the engine lock while the audit battery runs: each sec_audit.py
   # child spawns `ntn exec`, which needs the same lock. Holding it here would
@@ -865,7 +953,7 @@ cmd_security_audit() { # ntn security-audit <ref|all> [--trigger explicit|quarte
     dev=$(device_by_id "$id")
     hostname=$(jq -r '.hostname' <<<"$dev"); ip=$(jq -r '.ip' <<<"$dev"); brand=$(jq -r '.brand' <<<"$dev")
     echo "Auditing $hostname ($ip) ..."
-    out=$(mktemp "$TMPBASE/ntn.sec.XXXXXX")
+    out=$(tmpfile ntn.sec.XXXXXX)
     python3 "$py" "$hostname" --json > "$out" 2>/dev/null; rc=$?
     if [ $rc -eq 2 ] || ! jq -e . "$out" >/dev/null 2>&1; then
       local err; err=$(jq -r '.error // "collection failed"' "$out" 2>/dev/null)
@@ -934,7 +1022,7 @@ ntn — NTnRoute.AI device engine
   ntn add <IP> <Port> <User> <Pass> <Type> <Brand> [Secret]
                                              test connection, pull hostname and config, then save
   ntn remove <number|id>                     remove a device from the inventory
-  ntn show <ref>                             show device details and stored config (credentials masked)
+  ntn show <ref>                             show device details and stored config
   ntn sync <ref|all>                         pull the latest running configuration
 EOF
 }

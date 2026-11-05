@@ -43,11 +43,11 @@ DB schema reference: the repo's `examples/devices.example.json` is the authorita
 **Menu rule (first contact).** When the user types `ntn` alone, asks "what can ntn do", or wants the command list: run `ntn help`, then present EVERY command from the block below — all 5, each with its arguments and a clear one-line explanation of what it is for, written in the user's language. Never compress the menu into grouped bullets, never drop commands, never replace the menu with a summary. The full menu IS the answer; a short closing question ("what would you like to do first?") is fine. Never mention, hint at, or categorize commands beyond these five — words like "public/internal/hidden commands" must never appear; that is the same as telling the user those commands exist. If the user asks for or attempts an operation outside the menu, say that command does not exist and stop; do not explain further.
 
 ```
-ntn list                                   # numbered list (hostname, ip:port, type, brand — no credentials)
+ntn list                                   # numbered list (hostname, ip:port, type, brand)
 ntn add <IP> <Port> <User> <Pass> <Type> <Brand> [Secret]
                                            # tests the connection first, pulls hostname + config, then saves
 ntn remove <number|id>                     # remove a device from the inventory (number/id only)
-ntn show <ref>                             # device details + stored config (credentials masked)
+ntn show <ref>                             # device details + stored config
 ntn sync <ref|all>                         # pull the latest running-config from the device
 ```
 
@@ -87,17 +87,17 @@ interface Ethernet0/2
  no shutdown
 EOF
 # 2. fresh baseline + blast-radius gate — MANDATORY (network-change-management skill)
-ntn sync <ref>   # audit prefers a config that was actually read; note the new file in ~/.ntnroute/backups/
+ntn sync <ref>   # refresh config_list from the device; the snapshot lands in ~/.ntnroute/backups/<host>/<YYYY-MM>/<stamp>-sync.cfg
 S=~/.hermes/skills/networking/network-change-management/scripts
 python3 $S/cfg_audit.py --change "$TMPDIR/change.cmd" \
-  --config ~/.ntnroute/backups/<file-from-sync>.cfg --mgmt-ip <mgmt-ip>
+  --config ~/.ntnroute/backups/<host>/<YYYY-MM>/<stamp>-sync.cfg --mgmt-ip <mgmt-ip>
 # If the mgmt IP is DHCP-learned: add --mgmt-interface <iface> so lockout stays CRIT.
 # RISK INTERPRETATION: PROCEED WITH CAUTION means explain the management-path
 # risk, include recovery/rollback, and obtain explicit approval. It does not
 # deny the change.
 # 3. generate rollback, read it line by line, fill in "# TODO restore from snapshot:" from the pre-config
 $S/rollback_gen "$TMPDIR/change.cmd" \
-  --existing-config ~/.ntnroute/backups/<file-from-sync>.cfg \
+  --existing-config ~/.ntnroute/backups/<host>/<YYYY-MM>/<stamp>-sync.cfg \
   --out "$TMPDIR/rollback.cmd"
 # MikroTik: the result contains `remove [find]` placeholders — narrow each find to the
 # object the change actually added.

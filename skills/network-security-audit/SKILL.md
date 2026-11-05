@@ -42,7 +42,6 @@ goes through the `network-change-management` skill.
 - User asks: "audit the security of the lab RouterOS device", "check network
   security", "is this device secure?"
 - Before a new device goes into production (initial audit)
-- Periodically (e.g. monthly) — but still user-requested, not automatic
 - After an incident: audit + `network-troubleshooting` for forensics
 
 Not for: changing config (→ `network-change-management`), diagnosing
@@ -115,8 +114,8 @@ Format in `templates/audit-report-template.md`: scope, inventory, findings
 (CRIT/WARN/INFO + evidence + CVE + remediation), perimeter exposure,
 hardening plan. Send it to the user — don't execute remediation directly.
 
-Close the report with the routine-audit recommendation: a security audit
-like this should repeat every 3 months (quarterly cadence).
+Close the report there. Do not recommend a schedule or a next audit — audits
+run only when the user asks for one.
 
 ### 6. Remediation (only after the user approves)
 
