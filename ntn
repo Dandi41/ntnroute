@@ -323,6 +323,17 @@ cmd_wait() { case "$1" in *running-config*|*current-configuration*|*"show config
 
 auth_failed() { grep -qE "Permission denied|Authentication failed|no matching|Connection (refused|timed out)|No route to host" "$1" 2>/dev/null; }
 
+# The device answered the session, but the privileged level was never reached or
+# the CLI rejected what we sent: the "config" is really a login/error transcript.
+# Treating it as a configuration would poison config_list and any rollback
+# baseline, so every pull path refuses it.
+pull_bogus() { # file -> 0 when the content is NOT a real configuration
+  local f=$1
+  [ -s "$f" ] || return 0
+  grep -qE '^% ?Bad secrets|^% ?Bad secret|^% ?Invalid input|^% ?Incomplete command|^% ?Ambiguous|^% ?Unknown command|^% ?Unknown cmd|^syntax error|^Password: *$|^Permission denied|^Authentication failed|^invalid value for argument|^Error: (Unrecognized|Invalid|Incomplete|Wrong|Ambiguous|Unknown|Syntax)|command parse error|Unknown action|Unknown attribute|^execution error|^script error' "$f" 2>/dev/null && return 0
+  return 1
+}
+
 build_exec_plan() { # brand secret plan_file cmd...
   local brand=$1 secret=$2 plan=$3; shift 3
   : > "$plan"
@@ -362,6 +373,35 @@ pull_config() { # ip port user pass secret brand out_file -> exit code; out cont
     rm -f "$transcript"
   fi
   return $rc
+}
+
+# Used by add and sync: a pull that is really a login/error transcript must not
+# be stored as a device configuration or used as a rollback baseline. Prints the
+# reason on stderr and returns 1.
+require_real_config() { # brand out_file label
+  local brand=$1 out=$2 label=$3 pat hint=""
+  if [ ! -s "$out" ]; then echo "ERROR: $label: config pull is empty." >&2; return 1; fi
+  # Only PTY brands reach a privileged level; exec brands (MikroTik, Linux,
+  # Windows) never log in a second time, so the secret hint does not apply.
+  if is_exec_brand "$brand" || is_execarg_brand "$brand"; then
+    if pull_bogus "$out"; then
+      echo "ERROR: $label: the pull returned CLI errors instead of a configuration." >&2
+      grep -m3 -E '^% ?Invalid input|^% ?Unknown command|^invalid value for argument|^syntax error' "$out" >&2 2>/dev/null || true
+      return 1
+    fi
+    return 0
+  fi
+  if [ -z "$(secret_cmd "$brand")" ]; then return 0; fi
+  # An `enable`/`super` secret that is missing or wrong kills the session at
+  # "Bad secrets" and the pull is pure transcript.
+  pat='^% ?Bad secrets|^% ?Bad secret|^Password: *$'
+  if grep -qE "$pat" "$out" 2>/dev/null; then hint=" (stored level-2 secret was rejected — re-add the device with the correct secret)"; fi
+  if pull_bogus "$out" || [ -n "$hint" ]; then
+    echo "ERROR: $label: the device never reached privileged mode / returned CLI errors instead of a configuration${hint}." >&2
+    grep -m3 -E "$pat|^% ?Invalid input|^% ?Unknown command|^invalid value for argument" "$out" >&2 2>/dev/null || true
+    return 1
+  fi
+  return 0
 }
 
 pull_hostname() { # ip port user pass secret brand -> stdout hostname ('' on failure)
@@ -458,6 +498,7 @@ cmd_add() {
     rm -f "$cfgfile"
     die "device config is empty — device NOT saved."
   fi
+  require_real_config "$brand" "$cfgfile" "add $ip" || { rm -f "$cfgfile"; die "device NOT saved."; }
 
   local hostname; hostname=$(pull_hostname "$ip" "$port" "$user" "$pass" "$secret" "$brand")
   [ -n "$hostname" ] || hostname="$ip"
@@ -604,6 +645,7 @@ sync_one() { # id
     rm -f "$cfgfile"; echo "FAILED sync $hostname ($ip): connection/auth"; return 1
   fi
   if [ ! -s "$cfgfile" ]; then rm -f "$cfgfile"; echo "FAILED sync $hostname: empty config output"; return 1; fi
+  if ! require_real_config "$brand" "$cfgfile" "sync $hostname ($ip)"; then rm -f "$cfgfile"; return 1; fi
   local stamp dir; stamp=$(date +%Y%m%d-%H%M%S)
   dir=$(backup_month_for "$hostname" "$stamp"); mkdir -p "$dir"; chmod 700 "$dir"
   cp "$cfgfile" "$dir/$stamp-sync.cfg"; chmod 600 "$dir/$stamp-sync.cfg"
@@ -623,6 +665,7 @@ cmd_sync() {
     [ -n "$ids" ] || { echo "(no devices yet)"; return 0; }
     for id in $ids; do if sync_one "$id"; then ok=$((ok+1)); else fail=$((fail+1)); fi; done
     echo "Done: $ok succeeded, $fail failed"
+    [ "$fail" -eq 0 ] || return 1
   else
     local id; id=$(resolve_ref "$1"); [ -n "$id" ] || die "device not found: $1"
     sync_one "$id"

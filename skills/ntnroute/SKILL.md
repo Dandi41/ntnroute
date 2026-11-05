@@ -100,6 +100,10 @@ $S/rollback_gen "$TMPDIR/change.cmd" \
 ```
 The engine performs: pre snapshot → apply → save → refresh inventory snapshot/archive → retain rollback. `STATUS: APPLIED` means no device-side CLI error was detected; it is not functional validation. Immediately run the verification commands promised in the plan (read-only, no further approval) and report their real output.
 
+**A pull that is not a configuration is refused.** The engine screens every config pull before storing it: a login/error transcript (`% Bad secrets`, a bare `Password:` prompt, `% Invalid input` / `% Unknown command` / `syntax error` / `invalid value for argument`) is rejected. `add` then saves nothing and exits non-zero; `sync` reports that device as failed and leaves its previous `config_list` untouched; `sync all` exits 1 when any device failed. A wrong or missing level-2 secret therefore surfaces as a failure instead of a silent transcript "config". A stored `% Bad secrets` transcript with `check_point: (empty)` still means privileged mode was never reached — fix the stored secret by re-`add`ing the device before planning anything against it. Never let a false "config" become a rollback baseline: a rollback generated from a transcript would push garbage to the device.
+
+**Keep the repo and the installed copy in sync.** This skill exists twice: the repo source (`~/ntnroute/skills/...`, the committed truth) and the installed copy (`~/.hermes/skills/networking/...`, what the agent loads). `install.sh` copies repo → installed, so a patch written only to the installed copy is lost on the next install. Patch the repo, then `install.sh`, then commit.
+
 ## Test status
 
 Proven end-to-end (not just designed):
@@ -114,6 +118,7 @@ Proven end-to-end (not just designed):
 | Pre-snapshot guard with unreachable device | fake IP entry | Abort before apply, exit 1 |
 | Device-error guard (Cisco) | invalid IP address | FAILED reported, `config_list` unchanged |
 | Device-error guard (RouterOS) | `address=999.999.999.999/24` | `invalid value for argument address`, `config_list` unchanged |
+| Bogus-pull guard (`add` / `sync`) | lab Cisco with a wrong level-2 secret; 23 real configs + 5 trap files | wrong secret → `add` saves nothing (exit 1), `sync` fails (exit 1) leaving `config_list` untouched, `sync all` exits 1; 0 false positives on real configs |
 | `add` / `exec` / `sync` (Linux brand) | mock Linux server (paramiko, exec-mode) | OK — `uname -a` + os-release snapshot |
 | `add` / `exec` / `sync`, `config` refused | real Windows 11 host over OpenSSH (cmd.exe) | OK — `systeminfo` snapshot, hostname auto-extracted; config/rollback correctly refused |
 
