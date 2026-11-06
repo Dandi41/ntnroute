@@ -88,7 +88,13 @@ audit() {
 }
 # ---------- backup archive --------------------------------------------------
 safe_host() { printf '%s' "$1" | tr -c 'A-Za-z0-9._-' '_' ; }
-month_for() { date -d "$1" +%Y-%m 2>/dev/null || date -j -f '%Y%m%d-%H%M%S' "$1" +%Y-%m 2>/dev/null || date +%Y-%m; }
+month_for() {
+  local s="$1"
+  case "$s" in
+    [0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9]) printf '%s-%s' "${s:0:4}" "${s:4:2}" ;;
+    *) date -d "$s" +%Y-%m 2>/dev/null || date +%Y-%m ;;
+  esac
+}
 backup_root_for() { printf '%s/%s' "$BACKUP_DIR" "$(safe_host "$1")"; }
 backup_month_for() { printf '%s/%s' "$(backup_root_for "$1")" "$(month_for "$2")"; }
 month_back() {
@@ -166,7 +172,7 @@ archive_pair() {
   local host=$1 stamp=$2 finalcfg=$3 rollback=$4 dir pair tmpcfg tmprb
   [ -s "$finalcfg" ] && [ -s "$rollback" ] || return 1
   dir=$(backup_month_for "$host" "$stamp"); mkdir -p "$dir"; chmod 700 "$dir"
-  pair="$(date -d "$stamp" +%Y%m%d-%H%M%S 2>/dev/null || date +%Y%m%d-%H%M%S)-$$"
+  pair="$stamp-$$"
   tmpcfg=$(mktemp "$dir/.${pair}.cfg.XXXXXX") || die "mktemp failed"
   tmprb=$(mktemp "$dir/.${pair}.rollback.XXXXXX") || die "mktemp failed"
   TMPFILES="$TMPFILES $tmpcfg $tmprb"
@@ -543,16 +549,7 @@ cmd_remove() {
 
   db_write '.devices = [(.devices // [])[] | select(.id != $id)]
             | .checkpoints = [(.checkpoints // [])[] | select(.hostname != $h)]
-            | .audit = [(.audit // [])[] | select((.detail | contains($h) | not) and (.detail | contains($ip) | not))]
-            | .security_audits = [
-                (.security_audits // [])[]
-                | .devices = [(.devices // [])[] | select((.id != $id) and (.hostname != $h) and (.ip != $ip))]
-                | select(.devices | length > 0)
-                | .summary.devices = ((.devices // []) | length)
-                | .summary.complete = ([(.devices // [])[] | select(.status == "complete")] | length)
-                | .summary.unreachable = ([(.devices // [])[] | select(.status == "unreachable")] | length)
-                | .summary.critical_runs = ([(.devices // [])[] | select((.counts.CRITICAL // 0) > 0)] | length)
-              ]' --argjson id "$id" --arg h "$hostname" --arg ip "$ip"
+            | .audit = [(.audit // [])[] | select((.detail | contains($h) | not) and (.detail | contains($ip) | not))]' --argjson id "$id" --arg h "$hostname" --arg ip "$ip"
   echo "OK: device and all related records removed → $label"
 }
 
@@ -876,9 +873,9 @@ cmd_config() {
         echo "WARNING: applied, but no post-apply snapshot is available for an archive"
       fi
       if [ -n "$archive" ]; then
+        rbfile="$archive.rollback.cmd"
         db_write '(.devices[] | select(.id==$id)).check_point = $rb' --argjson id "$id" --rawfile rb "$rbfile"
         echo "Backup archive: $archive.cfg + $archive.rollback.cmd"
-        rbfile="$archive.rollback.cmd"
       else
         # Fallback: keep the rollback beside the change archives, not loose.
         local fdir fb
@@ -953,111 +950,6 @@ cmd_audit() { # ntn audit [N | pending|failed|config|all] [N]   (internal)
   esac
 }
 
-# ---------- security audit (internal; used by the network-security-audit skill) ----------
-SEC_AUDIT_PY_CANDIDATES=(
-  "$HOME/.hermes/skills/networking/network-security-audit/scripts/sec_audit.py"
-  "$HOME/ntnroute/skills/network-security-audit/scripts/sec_audit.py"
-)
-sec_audit_py() {
-  local p; for p in "${SEC_AUDIT_PY_CANDIDATES[@]}"; do [ -f "$p" ] && { printf '%s' "$p"; return 0; }; done
-  return 1
-}
-
-cmd_security_audit() { # ntn security-audit <ref|all>   (runs only on an explicit user request)
-  local scope=""
-  while [ $# -gt 0 ]; do
-    case "$1" in
-      -*) die "unknown option: $1";;
-      *) [ -z "$scope" ] && scope=$1 || die "unknown argument: $1"; shift;;
-    esac
-  done
-  [ -n "$scope" ] || die "usage: ntn security-audit <ref|all>"
-  local py; py=$(sec_audit_py) || die "sec_audit.py not found (install the network-security-audit skill)"
-  command -v python3 >/dev/null 2>&1 || die "python3 not found (required by the security audit battery)"
-
-  local ids
-  if [ "$scope" = "all" ]; then ids=$(jq -r '.devices[].id' "$DB"); else ids=$(resolve_ref "$scope"); fi
-  [ -n "$ids" ] || die "no device matches: $scope"
-
-  local run_id; run_id="sa-$(date -u +%Y%m%dT%H%M%SZ)-$$"
-  local started; started=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-  db_write '.security_audits = ((.security_audits // []) + [{run_id:$id, trigger:$tr, scope:$sc, status:"running", started_at:$st, finished_at:"", summary:{}, devices:[]}])[-100:]' \
-    --arg id "$run_id" --arg tr "user-request" --arg sc "$scope" --arg st "$started"
-
-  # Release the engine lock while the audit battery runs: each sec_audit.py
-  # child spawns `ntn exec`, which needs the same lock. Holding it here would
-  # deadlock every child into its 300 s timeout.
-  exec 9>&- 2>/dev/null || true
-
-  local id dev hostname ip brand out rc
-  local n_crit=0 n_unreach=0 n_ok=0
-  while read -r id; do
-    [ -n "$id" ] || continue
-    dev=$(device_by_id "$id")
-    hostname=$(jq -r '.hostname' <<<"$dev"); ip=$(jq -r '.ip' <<<"$dev"); brand=$(jq -r '.brand' <<<"$dev")
-    echo "Auditing $hostname ($ip) ..."
-    out=$(tmpfile ntn.sec.XXXXXX)
-    python3 "$py" "$hostname" --json > "$out" 2>/dev/null; rc=$?
-    if [ $rc -eq 2 ] || ! jq -e . "$out" >/dev/null 2>&1; then
-      local err; err=$(jq -r '.error // "collection failed"' "$out" 2>/dev/null)
-      db_write '.security_audits[-1].devices += [{id:$id, hostname:$h, ip:$ip, brand:$b, status:"unreachable", os:"", error:$e, findings:[], counts:{}}]' \
-        --argjson id "$id" --arg h "$hostname" --arg ip "$ip" --arg b "$brand" --arg e "$err"
-      echo "UNREACHABLE: $hostname — $err"
-      n_unreach=$((n_unreach+1))
-    else
-      db_write '.security_audits[-1].devices += [$d]' --argjson d "$(jq -c --argjson id "$id" '{id:$id, hostname:.hostname, ip:.ip, brand:.brand, status:.status, os:.os, error:.error, findings:.findings, counts:.counts}' "$out")"
-      local c; c=$(jq -r '.counts.CRITICAL // 0' "$out")
-      if [ "$c" -gt 0 ]; then
-        echo "WARNING: $hostname memiliki $c CRITICAL finding(s)"
-        n_crit=$((n_crit+1))
-      else
-        n_ok=$((n_ok+1))
-      fi
-    fi
-    rm -f "$out"
-  done <<< "$ids"
-
-  local finished; finished=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-  # re-acquire the engine lock for the final DB writes
-  if command -v flock >/dev/null 2>&1; then exec 9>"$LOCK_FILE"; flock 9; fi
-  local status="complete"
-  [ "$n_unreach" -gt 0 ] && status="complete_with_warnings"
-  db_write '.security_audits[-1].finished_at = $f
-            | .security_audits[-1].status = $s
-            | .security_audits[-1].summary = {devices:($n_d|tonumber), complete:($n_ok|tonumber), unreachable:($n_u|tonumber), critical_runs:($n_c|tonumber)}' \
-    --arg f "$finished" --arg s "$status" --argjson n_d "$(jq -r '.security_audits[-1].devices | length' "$DB")" \
-    --argjson n_ok "$n_ok" --argjson n_u "$n_unreach" --argjson n_c "$n_crit"
-  echo "Security audit run: $run_id ($status)"
-  [ "$n_crit" -gt 0 ] && return 1
-  [ "$n_unreach" -gt 0 ] && return 2
-  return 0
-}
-
-cmd_security_audit_list() { # ntn security-audit-list [N]
-  local n=${1:-10}
-  jq -r --argjson n "$n" '(.security_audits // [])[-$n:][] | "\(.run_id)  \(.status)  \(.trigger)  scope=\(.scope)  \(.started_at)"' "$DB"
-}
-
-cmd_security_audit_show() { # ntn security-audit-show <run-id>
-  [ $# -ge 1 ] || die "usage: ntn security-audit-show <run-id>"
-  jq -r --arg id "$1" '((.security_audits // []) | map(select(.run_id==$id)) | .[0]) as $r
-    | if $r == null then "ERROR: run not found: \($id)" else
-      "run        : \($r.run_id)",
-      "status     : \($r.status)",
-      "trigger    : \($r.trigger)   scope: \($r.scope)",
-      "started    : \($r.started_at)   finished: \($r.finished_at)",
-      "summary    : \($r.summary | tostring)",
-      ($r.devices[] |
-        "  \(.hostname) (\(.ip)) [\(.brand)] — \(.status)" +
-          (if (.os // "") != "" then " — \(.os)" else "" end) +
-          (if (.error // "") != "" then "\n    error: \(.error)" else "" end),
-        (.findings[]? | "    [\(.severity)] \(.rule): \(.why)")),
-      (if ([ $r.devices[] | select(.status=="unreachable") ] | length) > 0
-       then "WARNING: \([ $r.devices[] | select(.status=="unreachable") ] | length) device(s) UNREACHABLE — they must not be considered secure."
-       else empty end)
-    end' "$DB"
-}
-
 usage() {
   cat <<'EOF'
 ntn — NTnRoute.AI device engine
@@ -1074,7 +966,7 @@ main() {
   local sub=${1:-help}; shift || true
   # Skill-owned operations must be indistinguishable from a typo: same usage
   # block, same "unknown command" error, same exit code.
-  case " exec ping config rollback checkpoints audit security-audit security-audit-list security-audit-show " in
+  case " exec ping config rollback checkpoints audit " in
     *" $sub "*)
       [ "${NTN_INTERNAL:-}" = "1" ] || { usage; die "unknown command: $sub"; };;
   esac
@@ -1090,9 +982,6 @@ main() {
     rollback) cmd_rollback "$@";;
     checkpoints) cmd_checkpoints "$@";;
     audit) cmd_audit "$@";;
-    security-audit) cmd_security_audit "$@";;
-    security-audit-list) cmd_security_audit_list "$@";;
-    security-audit-show) cmd_security_audit_show "$@";;
     help|--help|-h) usage;;
     *) usage; die "unknown command: $sub";;
   esac

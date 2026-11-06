@@ -1,7 +1,6 @@
-# Per-brand diagnostic commands
+# Diagnostic command examples (read-only)
 
-All commands are **read-only**. Run them via `ntn exec <ref> '<cmd>'`.
-The `ntn` engine already handles pagination, enable/secret, and session modes.
+These are reference examples for device platforms and versions where the syntax is confirmed. They are **not a canonical command list, automatic audit battery, or guarantee of support**. First identify exact vendor, OS/version, model and role. Choose only relevant commands; consult official vendor docs before running a command if uncertain. If unsupported, stop and verify syntax rather than trying batches blindly.
 
 ## Cisco IOS / IOS-XE
 
@@ -161,7 +160,9 @@ The `ntn` engine already handles pagination, enable/secret, and session modes.
 | General | `get system status` | Version, uptime, hostname |
 | General | `diagnose debug crashlog list` | Crash history |
 
-## Per-brand notes
+## Platform quirks worth remembering
+
+For a platform with no table above, identify its OS/model and obtain safe read-only commands from official docs. Do not extrapolate syntax across brands; similar keywords do not guarantee identical behavior.
 
 - **MikroTik** has no `show` — every command starts with `/`. The `ntn` engine
   uses exec-mode (`ssh -T`); each line stands alone.

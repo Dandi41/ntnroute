@@ -11,12 +11,11 @@ Engine perangkat jaringan berbasis SSH untuk AI agent: inventaris device, ekseku
 - **Cadangan config** — `ntn sync` menyimpan konfigurasi berjalan ke inventaris dan menyimpan snapshot bertanda waktu; setiap perubahan (dan rollback) yang sukses menerbitkan pasangan arsip di `~/.ntnroute/backups/<host>/<YYYY-MM>/`. Setiap folder bulan menampung maksimal 4 pasangan perubahan dan 4 snapshot sync/add, disimpan 3 bulan terakhir plus 1 arsip tahunan; file lepas dari versi lama dipindahkan ke tata letak ini secara otomatis.
 - **Perubahan config bergerbang** — `ntn config` menjalankan: snapshot pra-perubahan → apply → save → refresh inventaris/arsip. Gagal hanya jika device menolak perintah, sesi terputus, atau snapshot pra-perubahan tidak tersedia. Keberhasilan fungsional dibuktikan setelahnya lewat pemeriksaan device read-only yang direncanakan.
 - **Rollback** — setiap perubahan menyimpan checkpoint; script pembatalnya bisa diputar ulang saat diminta.
-- **Jejak audit** — setiap percobaan config/rollback dicatat *sebelum* menyentuh device (`config-pending`), lalu disettle: `config-ok`/`config-failed`/`config-aborted` + penanda `config-started` untuk riwayat. Filter jejak perubahan untuk troubleshooting dan audit keamanan: `pending` (percobaan tanpa verdict sama sekali — proses mati di tengah apply), `failed`, `config`, `all`. Entri yang berumur lebih dari 105 hari dipangkas otomatis; run audit keamanan dicatat terpisah, hanya saat audit benar-benar dilakukan.
+- **Jejak audit** — setiap percobaan config/rollback dicatat *sebelum* menyentuh device (`config-pending`), lalu disettle: `config-ok`/`config-failed`/`config-aborted` + penanda `config-started` untuk riwayat. Filter jejak perubahan untuk troubleshooting dan audit keamanan: `pending` (percobaan tanpa verdict sama sekali — proses mati di tengah apply), `failed`, `config`, `all`. Entri yang berumur lebih dari 105 hari dipangkas otomatis.
 
 Engine hanya bash + jq + OpenSSH — tanpa Python, tanpa agent, tanpa daemon.
-Skrip pembantu (`triage`, `rollback_gen`, `ios_session.sh`) juga bash + awk;
-hanya perkakas audit keamanan (`cfg_audit.py`, `sec_audit.py`) yang memakai
-Python stdlib.
+Skrip pembantu (`rollback_gen`, `ios_session.sh`) juga bash + awk. Audit dan
+troubleshooting adalah prosedur terpandu agent: tidak ada skrip audit/triage bawaan.
 
 ## Platform yang didukung
 
@@ -56,7 +55,7 @@ Field: `paging`, `secret_cmd`, `config_enter`, `config_leave`, `save_lines` (arr
 
 ## Format database device
 
-Inventaris tersimpan di `~/.ntnroute/devices.json` (mode 600, gitignore — jangan pernah commit file aslinya). Engine membaca dan menulis bentuk yang pasti: `next_id`, `devices[]`, `checkpoints[]`, `audit[]`, `security_audits[]`. Lihat [`examples/devices.example.json`](examples/devices.example.json) sebagai referensi yang sudah terisi dengan kredensial contoh — arahkan AI agent atau script ke file itu agar menulis nama field yang sama, bukan mengarang sendiri.
+Inventaris tersimpan di `~/.ntnroute/devices.json` (mode 600, gitignore — jangan pernah commit file aslinya). Engine membaca dan menulis bentuk yang pasti: `next_id`, `devices[]`, `checkpoints[]`, `audit[]`. Lihat [`examples/devices.example.json`](examples/devices.example.json) sebagai referensi yang sudah terisi dengan kredensial contoh — arahkan AI agent atau script ke file itu agar menulis nama field yang sama, bukan mengarang sendiri.
 
 ## Instalasi
 

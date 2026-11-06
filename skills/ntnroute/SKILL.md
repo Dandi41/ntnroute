@@ -22,7 +22,7 @@ Port of the n8n NTnRoute.AI workflow to Hermes. Persistence lives in a plain JSO
 
 Storage: `~/.ntnroute/devices.json` (mode 600). Backups: `~/.ntnroute/backups/`. Engine: `ntn` on `$PATH` (`~/.ntnroute/ntn`).
 
-DB schema reference: the repo's `examples/devices.example.json` is the authoritative shape of `devices.json` — top-level keys `next_id`, `devices[]`, `checkpoints[]`, `audit[]`, `security_audits[]`, and the exact field names inside each. Never invent fields or rename keys when reading or writing the DB; quote the example instead.
+DB schema reference: the repo's `examples/devices.example.json` is the authoritative shape of `devices.json` — top-level keys `next_id`, `devices[]`, `checkpoints[]`, `audit[]`, and the exact field names inside each. Never invent fields or rename keys when reading or writing the DB; quote the example instead.
 
 ## Mandatory principles
 
@@ -68,7 +68,7 @@ Secret is only for brands that need level-2 verification (Cisco `enable secret`,
 Resolve the target with `ntn list`, state its hostname and IP, then ask one
 explicit question before calling `ntn remove <number>`: **“Delete this device
 and all of its stored data (configuration backups, rollback files, checkpoints,
-audit history, and security-audit results)?”** Only a clear yes authorizes the
+audit history)?”** Only a clear yes authorizes the
 removal. A removal is total: it does not leave historical artifacts behind.
 
 ### Troubleshooting

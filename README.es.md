@@ -11,12 +11,12 @@ Motor de gestión de dispositivos de red por SSH para agentes de IA: un pequeño
 - **Copia de seguridad** — `ntn sync` guarda la configuración en ejecución en el inventario y almacena una instantánea con marca de tiempo; cada cambio exitoso (y cada rollback) publica un par de archivos en `~/.ntnroute/backups/<host>/<YYYY-MM>/`. Cada carpeta mensual contiene hasta 4 pares de cambios y 4 instantáneas de sync/add, conservados los últimos 3 meses más uno anual; los archivos sueltos de versiones anteriores se reubican automáticamente en este diseño.
 - **Cambios de configuración con puerta** — `ntn config` ejecuta: snapshot previo → aplicar → guardar → actualización del inventario/archivo. Solo falla ante un error de comando del dispositivo, sesión perdida o snapshot previo no disponible. El éxito funcional se confirma después con comprobaciones de solo lectura planificadas en el dispositivo.
 - **Rollback** — cada cambio guarda un checkpoint; el script de deshacer almacenado puede reproducirse a petición.
-- **Registro de auditoría** — cada intento de config/rollback se registra *antes* de tocar el dispositivo (`config-pending`) y luego se cierra: `config-ok`/`config-failed`/`config-aborted` más un marcador `config-started` para el historial. Los filtros del registro de cambios sirven para troubleshooting y revisión de seguridad: `pending` (intentos sin veredicto alguno — proceso muerto a mitad del apply), `failed`, `config`, `all`. Las entradas con más de 105 días se podan automáticamente; las ejecuciones de auditoría de seguridad se registran por separado, solo cuando realmente se realiza una auditoría.
+- **Registro de auditoría** — cada intento de config/rollback se registra *antes* de tocar el dispositivo (`config-pending`) y luego se cierra: `config-ok`/`config-failed`/`config-aborted` más un marcador `config-started` para el historial. Los filtros del registro de cambios sirven para troubleshooting y revisión de seguridad: `pending` (intentos sin veredicto alguno — proceso muerto a mitad del apply), `failed`, `config`, `all`. Las entradas con más de 105 días se podan automáticamente.
 
 El motor es solo bash + jq + OpenSSH — sin Python, sin agentes, sin demonios.
-Los scripts auxiliares (`triage`, `rollback_gen`, `ios_session.sh`) también son
-bash + awk; solo las herramientas de auditoría de seguridad (`cfg_audit.py`,
-`sec_audit.py`) usan Python estándar.
+Los scripts auxiliares (`rollback_gen`, `ios_session.sh`) también son bash + awk.
+La auditoría y el troubleshooting son procedimientos guiados del agente: sin
+scripts de auditoría o triaje incluidos.
 
 ## Plataformas soportadas
 
@@ -56,7 +56,7 @@ Campos: `paging`, `secret_cmd`, `config_enter`, `config_leave`, `save_lines` (ar
 
 ## Formato de la base de datos de dispositivos
 
-El inventario vive en `~/.ntnroute/devices.json` (modo 600, gitignored — nunca confirmes el archivo real). El motor lee y escribe una forma exacta: `next_id`, `devices[]`, `checkpoints[]`, `audit[]`, `security_audits[]`. Consulta [`examples/devices.example.json`](examples/devices.example.json) como referencia rellenada con credenciales de ejemplo — apunta a cualquier agente de IA o script a ese archivo para que use los mismos nombres de campo en vez de inventar los suyos.
+El inventario vive en `~/.ntnroute/devices.json` (modo 600, gitignored — nunca confirmes el archivo real). El motor lee y escribe una forma exacta: `next_id`, `devices[]`, `checkpoints[]`, `audit[]`. Consulta [`examples/devices.example.json`](examples/devices.example.json) como referencia rellenada con credenciales de ejemplo — apunta a cualquier agente de IA o script a ese archivo para que use los mismos nombres de campo en vez de inventar los suyos.
 
 ## Instalación
 

@@ -1,28 +1,15 @@
 # Threat research procedure: CVEs, RFCs, OS versions, real-world incidents
 
 Core rule: **the audit must be based on citable evidence.** A CVE finding
-without an official link = rumor. Source order: vendor PSIRT/advisory →
-NVD/CVE.org → community (for context, not evidence).
+Source order: vendor PSIRT/advisory → NVD/CVE.org → community (for leads/context only; verify claims against official evidence).
 
 ## 1. OS version first, always
 
-Get the version from live output (`sec_audit.py` already prints `os=...`):
-
-- Cisco: the `Cisco IOS Software ... Version 15.4(2)T4` line in `show version`
-- MikroTik: `installed-version:` in `/system package update print`
-- Huawei/Aruba/Arista/Juniper/Ruijie: `display version` / `show version` /
-  `show version detail`
-
-Also record the **channel** (RouterOS stable/long-term/testing) and the
-**build date**. Testing = riskier; long-term = the security patch target.
+Identify exact vendor, product/model and OS version/build from live, read-only output. Use the confirmed platform's documented read-only command; don't infer the syntax from another vendor. Record channel/build where applicable.
 
 ## 2. Check the version's lifecycle status
 
-Before CVEs: is this version still supported?
-
-- Cisco: search for "End-of-Sale and End-of-Life Announcement <release>" on cisco.com
-- MikroTik: the download page shows which releases are still receiving patches
-- An EOL version is a CRIT finding in its own right: it will never receive patches
+Before CVEs, establish whether the **exact model and software release** remain supported. Use official vendor lifecycle notices/release notes. Do not label EOL or unsupported without a source.
 
 ## 3. Search CVEs for that version
 
@@ -47,8 +34,7 @@ Official sources per vendor:
 | Juniper | https://supportportal.juniper.net/ + https://www.juniper.net/documentation/ | JTSA/JSA bulletins |
 | Ruijie | https://www.ruijie.com/en-global/support/ | support documents; limited PSIRT |
 
-Cross-verify on NVD: https://nvd.nist.gov/vuln/search — a CVE that isn't on
-NVD or the vendor PSIRT must not be reported as fact.
+Cross-check in NVD/CVE.org and reconcile discrepancies with the vendor advisory. Do not treat absence from one database as proof that no issue exists.
 
 What to record per relevant CVE:
 
@@ -57,8 +43,8 @@ CVE-ID | affected versions (do they match the device version?) | CVSS severity
 component/feature | does the device use that feature? | official link
 ```
 
-**Relevance ≠ existence.** A CVE for a feature the device doesn't use is
-still recorded, as INFO, not CRIT.
+- **CVE without feature applicability.** A version hit alone does not prove exposure; check whether the affected feature is enabled/reachable, and say when you cannot establish it.
+
 
 ## 4. RFCs / best practices behind the audit rules
 

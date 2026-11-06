@@ -12,9 +12,7 @@ metadata:
 
 # Network Troubleshooting
 
-Network device diagnosis using the OSI layer principle, backed by the `ntn`
-engine and the `triage` script that reads `show` output without touching
-the device.
+Network device diagnosis using the OSI layer principle. This skill is a **guided diagnostic procedure**, not an output parser: identify the device/platform, gather targeted read-only evidence, and adapt commands to the actual OS/version. Examples are starting points; verify syntax before use.
 
 ## When to Use
 
@@ -50,59 +48,32 @@ adding/removing devices (that is the `ntnroute` skill), or plain Linux servers.
 Ask the user: which device, what symptom, since when, who is affected.
 
 > **Engine gate:** the workflow operations above (exec, ping, config,
-> rollback, checkpoints, audit, security-audit) are skill-owned — the engine
+> rollback, checkpoints, audit) are skill-owned — the engine
 > refuses them without the `NTN_INTERNAL=1` gate variable, and users are
 > never told they exist (if asked, the command does not exist). Exact
 > invocations: `ntnroute` → `references/engine-commands.md`.
 
-Probe reachability first (the engine's ping operation) — if ICMP does not get
-through, the problem is below SSH.
+Probe reachability first using an appropriate read-only method. If ICMP is blocked, distinguish policy filtering from device/path failure using another approved vantage point or a live status check; ping failure alone does not prove the device is down.
 
-### 2. Pull snapshot
+### 2. Pull a snapshot (when relevant)
 
-```bash
-ntn sync <ref>
-```
+Use `ntn sync <ref>` to obtain a fresh configuration snapshot when useful to explain the symptom. If unreachable, probe reachability and gather evidence from another known-working point. A snapshot is context, not a diagnosis.
 
-Keep the backup file as a baseline. If the device cannot be reached over SSH,
-probe reachability plus checks from another device that is still alive.
+### 2b. Check the audit trail (only when symptom could be change-related)
 
-### 2b. Check the audit trail (additional evidence — only when the symptom could be change-related)
+Read attempts with no verdict, recorded failures, then the device timeline (see `references/audit-trail.md`). An unsettled apply means live state is UNKNOWN—verify live config before trusting stored data. Skip for clearly physical/link symptoms.
 
-Read the engine's change log: first the attempts with no verdict (a session
-that died mid-apply), then every recorded failure, then the device's change
-timeline (invocation: `references/audit-trail.md`).
+### 3. Form testable hypotheses
 
-An unexplained entry often *is* the cause: a change applied by someone else, an
-apply that was interrupted, a device that drifted from the inventory. An
-unsettled `config-pending` means the device state is UNKNOWN — verify the live
-config before trusting `config_list`. Full vocabulary, filters, retention and
-the recovery procedure: `references/audit-trail.md`. Skip this step for pure
-link/physical symptoms — the OSI ladder below settles those.
+Use `references/osi-ladder.md` to choose the starting layer and progress from the lowest relevant layer. Select commands based on confirmed vendor, OS/version and role (examples in `references/vendor-commands.md`). Examples are not a complete command registry: check official docs when unsure; never assume Cisco/MikroTik syntax for an unfamiliar platform.
 
-### 3. Collect diagnostic data
+For counters, take two readings separated by a pause; a single absolute value does not prove an active fault. Save raw output with device and timestamp.
 
-Run the per-brand commands from `references/vendor-commands.md` through the
-engine's exec operation, one batch per device, and save the transcript to a
-file for the triage step.
+### 4. Interpret evidence manually
 
-### 4. Automatic triage
+Compare observations with expected state and the symptom. Separate facts from inference; state confidence and what would falsify the hypothesis. A rejected/unsupported command is not a device fault—verify syntax before trying alternatives. Do not generate an automatic verdict from text patterns.
 
-```bash
-S=~/.hermes/skills/networking/network-troubleshooting/scripts
-$S/triage out.txt --mgmt-ip <ip-mgmt>
-```
-
-Output: per-layer findings (CRIT/WARN/INFO) plus a verdict. Exit 1 = there is
-an L1/L2 problem that configuration cannot fix.
-
-### 5. Climb the OSI ladder
-
-Read `references/osi-ladder.md` for the symptom → first-layer map. Each layer
-has an opening question and proof commands. Stop at the first layer proven
-broken.
-
-### 6. Official + community research
+### 5. Official + community research
 
 If the hypothesis is still unconfirmed, search vendor official sources and the
 community (see `references/official-sources.md`). Use `web_search` and
@@ -111,50 +82,22 @@ documentation first.
 
 ### 7. Report + propose a fix
 
-Present: the symptom, the broken layer, output evidence, the hypothesis, and
-the proposed fix. **Do not apply anything directly** — that is the job of the
-`network-change-management` skill with its plan approval gate.
+Report symptom, scope, checked layers, exact evidence/output, confirmed facts, leading hypothesis and confidence, remaining unknowns, and proposed next test or fix. Do not present an unsupported guess as root cause. **Do not apply anything directly** — use `network-change-management` and its approval/rollback process.
 
-## Multi-Brand
+## Cross-vendor practice
 
-The `ntn` engine supports: Cisco, Huawei, Aruba, Arista, Ruijie, Juniper,
-MikroTik. Diagnostic commands differ per brand — see
-`references/vendor-commands.md`. The brand is auto-detected from `devices.json`.
-
-For brands not yet tested (Huawei, Aruba, Arista, Ruijie, Juniper), the engine
-code paths exist but have never been run against real devices. If a command
-fails, check the syntax in the vendor's official documentation.
+- Confirm vendor, OS/version, model and role before choosing commands; don't infer from old notes.
+- Commands in `references/vendor-commands.md` are hints, not guarantees. Verify via official docs if unsure.
+- Prefer standard signals where available (link, counters, addresses, routes/neighbors, logs, end-to-end tests), while recognizing retrieval differs by platform.
+- If the platform is unfamiliar, ask for safe read-only output or consult docs; don't run an unverified batch.
+- Tools may help transport or preserve output, but must not replace reasoning or force brand-specific interpretation.
 
 ## Pitfalls
 
-- **Absolute counters mislead.** A CRC count of 42 from last month ≠ a problem
-  now. Always take two readings with a pause between them.
-- **`show interface` vs `show interfaces`.** Cisco IOS uses `show interfaces`
-  (plural) for everything and `show interface <name>` (singular) for one port.
-  Misspell it and you get an error.
-- **RouterOS exec-mode does not keep context.** Every line stands alone.
-  `triage` already handles this, but if you run commands manually, use the
-  full path.
-- **MikroTik `/interface print` vs `/interface ethernet print`.** The first
-  lists all interfaces, the second only ethernet. Use the first for triage.
-- **Never touch the management interface.** `triage` flags the interface
-  carrying your SSH IP. If that goes down, you lose access.
-- **Exit 1 from triage is not a tool failure.** It is a verdict: there is a
-  physical/link problem that must be fixed before any configuration change.
+- **Never change the management path.** Before an approved change, explicitly identify and protect the interface/path carrying the session; diagnosis does not authorize changes.
+- **Verify platform syntax.** Do not assume RouterOS/Cisco command shapes apply to another vendor or release.
+- **Ping is one signal.** ICMP may be filtered; corroborate before concluding reachability.
 
 ## Verification
 
-The audit trail is the first evidence step, not an afterthought: every config
-or rollback attempt is written before it touches the device and settled
-afterwards, so `ntn audit pending` is empty when nothing was left hanging and
-non-empty exactly when a process died mid-apply — verified against a mock
-(success, verify-failure, abort, rollback) and on the live lab devices.
-
-Verified on the lab Cisco router (IOS 15.4) and the lab RouterOS device
-(RouterOS 7.18.2):
-- `triage` on the lab Cisco router's `show interfaces` output → CRIT=0,
-  exit 0, management interface flagged correctly.
-- `triage` on the lab RouterOS device's `/interface print detail` output →
-  CRIT=1 (ether4 not running), WARN=1 (ether2 link-flaps), exit 1.
-- Synthetic output (interface down, half-duplex, CRC, no default route, ARP
-  incomplete) → all detected with the correct severity.
+The audit trail records config/rollback attempts before touching the device and settles them afterwards. Check it when symptoms may be change-related; do not treat it as a substitute for live evidence.

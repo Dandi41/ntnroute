@@ -11,12 +11,12 @@ SSH-basierte Network-Device-Engine für KI-Agenten: ein kompaktes Geräte-Invent
 - **Config-Backup** — `ntn sync` zieht die Running-Config ins Inventar und legt einen Zeitstempel-Snapshot ab; jede erfolgreiche Änderung (und jeder Rollback) veröffentlicht ein Archivpaar unter `~/.ntnroute/backups/<host>/<YYYY-MM>/`. Jeder Monatsordner fasst bis zu 4 Änderungspaare und 4 Sync/Add-Snapshots, aufbewahrt für die letzten 3 Monate plus einen jährlichen Keeper; lose Dateien älterer Versionen wandern automatisch in dieses Layout.
 - **Freigabepflichtige Config-Änderungen** — `ntn config` führt aus: Snapshot vor der Änderung → anwenden → speichern → Inventar-/Archivaktualisierung. Fehler gibt es nur bei einem Gerätefehler, einer verlorenen Sitzung oder einem fehlenden Vorab-Snapshot. Der funktionale Erfolg wird danach mit geplanten Nur-Lese-Prüfungen am Gerät bestätigt.
 - **Rollback** — jede Änderung legt einen Checkpoint an; das gespeicherte Rückgängig-Skript kann auf Anforderung wiedereingespielt werden.
-- **Audit-Trail** — jeder Config-/Rollback-Vorgang wird *vor* dem Zugriff auf das Gerät protokolliert (`config-pending`) und dann abgeschlossen: `config-ok`/`config-failed`/`config-aborted` plus ein `config-started`-Marker für die Akte. Die Filter des Änderungsprotokolls dienen Troubleshooting und Security-Review: `pending` (Vorgänge ganz ohne Ergebnis — Prozess mitten im Apply beendet), `failed`, `config`, `all`. Einträge älter als 105 Tage werden automatisch entfernt; Security-Audit-Läufe werden separat aufgezeichnet, nur wenn tatsächlich ein Audit durchgeführt wird.
+- **Audit-Trail** — jeder Config-/Rollback-Vorgang wird *vor* dem Zugriff auf das Gerät protokolliert (`config-pending`) und dann abgeschlossen: `config-ok`/`config-failed`/`config-aborted` plus ein `config-started`-Marker für die Akte. Die Filter des Änderungsprotokolls dienen Troubleshooting und Security-Review: `pending` (Vorgänge ganz ohne Ergebnis — Prozess mitten im Apply beendet), `failed`, `config`, `all`. Einträge älter als 105 Tage werden automatisch entfernt.
 
 Die Engine besteht nur aus bash + jq + OpenSSH — kein Python, kein Agent, kein
-Daemon. Die Hilfsskripte (`triage`, `rollback_gen`, `ios_session.sh`) sind
-ebenfalls bash + awk; nur die Security-Audit-Werkzeuge (`cfg_audit.py`,
-`sec_audit.py`) nutzen Standard-Python.
+Daemon. Die Hilfsskripte (`rollback_gen`, `ios_session.sh`) sind ebenfalls
+bash + awk. Audit und Troubleshooting sind geführte Agent-Prozeduren: keine
+mitgelieferten Audit- oder Triage-Skripte.
 
 ## Unterstützte Plattformen
 
@@ -56,7 +56,7 @@ Felder: `paging`, `secret_cmd`, `config_enter`, `config_leave`, `save_lines` (Ar
 
 ## Format der Geräte-Datenbank
 
-Das Inventar liegt in `~/.ntnroute/devices.json` (Modus 600, gitignored — niemals die echte Datei committen). Die Engine liest und schreibt ein exaktes Format: `next_id`, `devices[]`, `checkpoints[]`, `audit[]`, `security_audits[]`. Siehe [`examples/devices.example.json`](examples/devices.example.json) als ausgefüllte Referenz mit Platzhalter-Zugangsdaten — verweise KI-Agents oder Skripte auf diese Datei, damit sie dieselben Feldnamen verwenden statt eigene zu erfinden.
+Das Inventar liegt in `~/.ntnroute/devices.json` (Modus 600, gitignored — niemals die echte Datei committen). Die Engine liest und schreibt ein exaktes Format: `next_id`, `devices[]`, `checkpoints[]`, `audit[]`. Siehe [`examples/devices.example.json`](examples/devices.example.json) als ausgefüllte Referenz mit Platzhalter-Zugangsdaten — verweise KI-Agents oder Skripte auf diese Datei, damit sie dieselben Feldnamen verwenden statt eigene zu erfinden.
 
 ## Installation
 

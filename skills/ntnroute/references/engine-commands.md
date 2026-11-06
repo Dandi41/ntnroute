@@ -15,9 +15,6 @@ NTN_INTERNAL=1 ntn config <ref> --script <file> [--rollback <file>] [--reason '<
 NTN_INTERNAL=1 ntn rollback <ref>                      # applies the stored check_point
 NTN_INTERNAL=1 ntn checkpoints <ref>
 NTN_INTERNAL=1 ntn audit [N|pending|failed|config|all] [N]
-NTN_INTERNAL=1 ntn security-audit <ref|all>   # only on an explicit user request
-NTN_INTERNAL=1 ntn security-audit-list [N]
-NTN_INTERNAL=1 ntn security-audit-show <run-id>
 ```
 
 `<ref>` = display number, `id`, `ip`, or `hostname` (case-insensitive);
@@ -33,8 +30,6 @@ NTN_INTERNAL=1 ntn security-audit-show <run-id>
   rollback logs `rollback-failed`.
 - **audit** is the change log (config/rollback lifecycle only, 105-day
   retention, 500-entry cap, pending entries never age out).
-- **security-audit** runs the read-only hardening battery on every matched
-  device and records the run under `.security_audits` (last 100 kept).
 - Brands with no config model (`config_supported: false` in brands.json —
   currently Linux and Windows) refuse `config` and `rollback` by design:
   read-only exec and sync only.

@@ -11,11 +11,11 @@ SSH-based network device engine for AI agents: a small device inventory, safe CL
 - **Config backup** — `ntn sync` pulls the running config into the inventory and stores a timestamped snapshot; every successful change (and rollback) publishes an archive pair under `~/.ntnroute/backups/<host>/<YYYY-MM>/`. Each month folder holds up to 4 change pairs and 4 sync/add snapshots, kept for the last 3 months plus one yearly keeper; loose files from older versions are filed into this layout automatically.
 - **Gated config changes** — `ntn config` performs: pre-change snapshot → apply → save → inventory snapshot/archive refresh. It fails only on a device-side command error, lost session, or unavailable pre-change snapshot. Functional success is confirmed afterward with planned read-only device checks.
 - **Rollback** — every change stores a checkpoint; the stored undo script can be replayed on request.
-- **Audit trail** — every config/rollback attempt is logged *before* it touches the device (`config-pending`), then settled: `config-ok`/`config-failed`/`config-aborted` + a `config-started` marker for the record. the change log's filters serve troubleshooting and security review: `pending` (attempts with no verdict at all — a process killed mid-apply), `failed`, `config`, `all`. Entries older than 105 days are pruned automatically; security-audit runs are recorded separately, only when an audit is actually performed.
+- **Audit trail** — every config/rollback attempt is logged *before* it touches the device (`config-pending`), then settled: `config-ok`/`config-failed`/`config-aborted` + a `config-started` marker for the record. the change log's filters serve troubleshooting and security review: `pending` (attempts with no verdict at all — a process killed mid-apply), `failed`, `config`, `all`. Entries older than 105 days are pruned automatically.
 
 The engine is bash + jq + OpenSSH only — no Python, no agents, no daemons. The
-helper scripts (`triage`, `rollback_gen`, `ios_session.sh`) are bash + awk too;
-only the security-audit tooling (`cfg_audit.py`, `sec_audit.py`) uses stdlib Python.
+helper scripts (`rollback_gen`, `ios_session.sh`) are bash + awk too. Auditing and
+troubleshooting are guided agent procedures: no bundled audit or triage scripts.
 
 ## Supported platforms
 
@@ -55,7 +55,7 @@ Fields: `paging`, `secret_cmd`, `config_enter`, `config_leave`, `save_lines` (ar
 
 ## Device database format
 
-The inventory lives in `~/.ntnroute/devices.json` (mode 600, gitignored — never commit the real one). The engine reads and writes an exact shape: `next_id`, `devices[]`, `checkpoints[]`, `audit[]`, `security_audits[]`. See [`examples/devices.example.json`](examples/devices.example.json) for a filled-in reference with placeholder credentials — point any AI agent or script at that file so it writes the same field names instead of inventing its own.
+The inventory lives in `~/.ntnroute/devices.json` (mode 600, gitignored — never commit the real one). The engine reads and writes an exact shape: `next_id`, `devices[]`, `checkpoints[]`, `audit[]`. See [`examples/devices.example.json`](examples/devices.example.json) for a filled-in reference with placeholder credentials — point any AI agent or script at that file so it writes the same field names instead of inventing its own.
 
 ## Install
 

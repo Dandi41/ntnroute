@@ -1,8 +1,6 @@
 # OSI ladder — diagnosis order and symptom map
 
-Master rule: **don't skip layers.** A "no internet" symptom is not a reason to
-start at DNS. Drop to the lowest layer not yet proven healthy, prove it, then
-climb.
+This guide uses OSI layers as a reasoning aid, not a rigid script. Start from the symptom and the lowest relevant layer; verify each hypothesis with actual evidence before moving on.
 
 Two moves, used in alternation:
 

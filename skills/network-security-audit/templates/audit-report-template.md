@@ -10,8 +10,11 @@ CVEs, an official link. Send it to the user — remediation only after approval.
 **Audit date:** <YYYY-MM-DD>
 **Scope:** local / perimeter / both
 **Vendor/OS:** <brand> <os + version + channel> — support status: <active/EOL, link>
-**Reference baseline:** <CIS <x>, RFC 3871, BCP 38 — name the ones used>
+**Reference baseline:** <name/version of any reference used>
 **CVE research sources:** <URLs cited, with access dates>
+**Checks completed:** <controls actually verified>
+**Not checked / unknown:** <unreachable, inaccessible, unsupported, or insufficient evidence>
+**Limitations:** <scope, vantage point, assumptions, versions>
 
 ### Summary
 

@@ -12,9 +12,7 @@ metadata:
 
 # Network Security Audit
 
-Security audit of network devices: device hardening (local network) and
-exposure to the outside (perimeter). Read-only during the audit; remediation
-goes through the `network-change-management` skill.
+Read-only during the audit; remediation goes through the `network-change-management` skill. The audit is a **guided procedure**, not a vendor-specific parser: identify platform from live evidence, choose safe read-only commands, interpret output, and research uncertain findings. Never assume examples are supported on every release.
 
 ## Core rules
 
@@ -54,75 +52,33 @@ outages (→ `network-troubleshooting`), adding devices (→ `ntnroute`).
 One short question: audit one device or all of them? Focus on local,
 perimeter, or both? Don't assume.
 
-### 2. Collect live data
+### 2. Collect live evidence (manual, read-only)
 
-For ONE device:
+Use the `ntnroute` skill's approved read-only access. Do not use a pre-baked audit script: syntax and output vary across vendors, OS versions, roles, and models.
 
-```bash
-S=~/.hermes/skills/networking/network-security-audit/scripts
-python3 $S/sec_audit.py <ref> [--cve] [--config <backup.cfg>]
-```
+1. Identify vendor/OS/version and device role from inventory and live evidence; if uncertain, ask for safe version/show output.
+2. Choose relevant checks from `references/baselines.md` and official docs. Ask for missing context (e.g. intended management source ranges or exposed services).
+3. Run a small batch of relevant read-only commands and retain raw output. If syntax is rejected, verify it from official docs before alternatives.
+4. If unreachable, report **unknown / not audited**, never secure.
+5. Verify feature applicability; separate observed facts from inference and state confidence.
 
-The script runs a read-only command battery per brand via `ntn exec`
-(services, users, SSH, firewall, OS version), parses the transcripts, and
-reports findings per category. Exit 1 = a CRIT exists. `--config` adds the
-config rules from `cfg_audit.py`.
+For multiple devices, repeat and record findings per device. Never claim the fleet is clean if devices/checks were unreachable or unverified.
 
-For MULTIPLE devices (an audit usually touches more than one), use the
-engine's multi-device audit operation — it runs the same battery on every
-matched device and records the run. These workflow operations are
-skill-owned: they require the `NTN_INTERNAL=1` gate variable (the engine
-refuses them without it; `sec_audit.py` sets it itself when it spawns
-`ntn exec`). Invocation: `ntnroute` → `references/engine-commands.md`.
+### 2b. Check the change log (when change-related)
 
-The workflow: run the audit (per-device WARNING/UNREACHABLE lines come back),
-list recent runs, and show the full per-device findings of the latest run.
-The run is persisted in `devices.json` under `.security_audits` (last 100
-kept) with per-device status, OS version, findings, and severity counts —
-so a multi-device audit is recorded once, with every device's result and
-notes, even the unreachable ones. Exit 1 = at least one device has a
-CRITICAL; exit 2 = at least one device was unreachable. Report BOTH kinds
-of warning to the user; an unreachable device must not be treated as safe.
-
-### 2b. Check the change log (additional evidence)
-
-Read the engine's change log for the device's config/rollback timeline and
-for attempts with no verdict — an apply that died mid-flight
-(invocation: `network-troubleshooting` → `references/audit-trail.md`).
-
-Changes made outside the approval gate, or an apply that never reported a
-verdict (device state may not match the inventory's `config_list`), are findings
-in their own right — record them with their timestamp. Vocabulary and recovery
-steps: `network-troubleshooting` → `references/audit-trail.md`.
+Read the config/rollback timeline and attempts with no verdict (`network-troubleshooting` → `references/audit-trail.md`). Record out-of-band changes and unsettled applies; verify live config before trusting stored snapshots.
 
 ### 3. CVE + version research (if requested or a suspicious version shows up)
 
-`--cve` prints the detected OS version plus the research procedure. Run the
-research yourself via `web_search` following `references/threat-research.md`:
-version EOL status → CVEs per version on the vendor PSIRT → verify on NVD →
-check feature relevance → record with links.
+Identify exact product, OS train, version, hardware/model and relevant features. Follow `references/threat-research.md`: vendor PSIRT first → verify in NVD → confirm affected/fixed versions and feature relevance. Cite URLs; state when unverified.
 
 ### 4. Assess against the baseline
 
-Compare findings with `references/baselines.md` (Cisco, MikroTik; other
-brands use the generic config audit + vendor baselines). Mark which items
-are covered by the checklist and which are not.
+Use `references/baselines.md` as a framework, not a vendor parser or exhaustive oracle. Adapt to platform and role; distinguish `not applicable`, `not checked`, and `unknown`. Verify command examples against official docs.
 
 ### 5. Assemble the report
 
-Format in `templates/audit-report-template.md`: scope, inventory, findings
-(CRIT/WARN/INFO + evidence + CVE + remediation), perimeter exposure,
-hardening plan. Send it to the user — don't execute remediation directly.
-
-Close the report there. Do not recommend a schedule or a next audit — audits
-run only when the user asks for one.
-
-### 6. Remediation (only after the user approves)
-
-Hardening plan → write the script → plan approval gate (5 blocks) →
-`ntn config` with rollback. All of that is the
-`network-change-management` skill's job; this skill stops at report +
-proposal.
+Use `templates/audit-report-template.md`: scope, inventory, reachability/completeness, evidence-backed findings with confidence, sources/CVEs, perimeter exposure, limitations, and proposed hardening. Do not execute remediation or recommend recurring audits.
 
 ## Division of labor across networking skills
 
@@ -130,7 +86,7 @@ proposal.
 |---|---|
 | `ntnroute` | inventory, transport, `ntn config`/rollback |
 | `network-device-cli` | how to SSH to devices directly (outside ntn) |
-| `network-troubleshooting` | outage diagnosis, OSI layers, `triage` |
+| `network-troubleshooting` | outage diagnosis, OSI layers, hypothesis tests |
 | `network-change-management` | change approval, rollback generation |
 | `network-security-audit` (this) | security findings, CVE/baseline, audit report |
 
@@ -140,39 +96,13 @@ applies it → `network-troubleshooting` verifies nothing broke.
 
 ## Pitfalls
 
-- **CVE without a feature check.** A CVE for an unused feature is INFO, not
-  CRIT. Check whether the device config actually uses that feature.
-- **Version ≠ patch level.** RouterOS 7.18.2 stable may or may not already
-  include the patches — check the release changelog on supportsec, not just
-  the version number.
-- **The perimeter needs an outside vantage point.** `sec_audit.py` reads
-  filter config; for real evidence, test from an outside network (port scan
-  from outside) — ask the user for permission first, and note in the report
-  that it was active testing.
-- **Untested brands.** Huawei/Aruba/Arista/Juniper/Ruijie have no live
-  battery in `sec_audit.py` — use the generic config audit + vendor
-  baselines, don't invent commands.
+- **CVE findings require applicability evidence.** Match product/model/build, affected versions, and enabled features before assigning severity.
+- **Version ≠ patch level.** Verify release notes and fixed-version advisories; do not infer patch status from version numbering alone.
+- **The perimeter needs an outside vantage point.** Configuration shows intended policy, not measured reachability. Active external tests require explicit permission and documented scope.
+- **Unknown is not safe.** Mark unreachable or unverified checks unknown/not checked, not pass.
 - **Don't run an audit unrequested.** This is a user rule, not a preference.
-- **Counters/errors in an audit ≠ diagnosis.** If the user reports an
-  outage, that's `network-troubleshooting`; a security audit doesn't answer
-  "why is it slow".
+- **Audit ≠ outage diagnosis.** Use `network-troubleshooting` for availability/performance symptoms.
 
 ## Verification
 
-Config/rollback history is part of the evidence base: `ntn audit config 50`
-gives the device timeline (pending → started → ok/failed/aborted) and
-`ntn audit pending` lists only attempts with no verdict at all. The engine
-writes the `-pending` entry *before* touching the device, so the trail covers
-interrupted applies too — verified against a mock (success, verify-failure,
-abort, rollback) and on the live lab devices.
-
-Proven on the lab RouterOS device (RouterOS 7.18.2) and the lab Cisco router
-(IOS 15.4(2)T4):
-- Lab RouterOS device: CRIT=5 — telnet/ftp/www/api enabled + empty input
-  chain (perimeter); WARN=4 — strong-crypto no, admin user expired, empty
-  inactivity policy; exit 1. Detected version: RouterOS 7.18.2.
-- Lab Cisco router: CRIT=0, WARN=1 — DEVELOPMENT TEST image build (not a
-  production build); INFO=3 — HTTP server disabled (good), version recorded
-  for CVE. Exit 0.
-- Live CVE research: `mikrotik.com/supportsec` (official advisories), CERT
-  Polska, NVD — the web_search → official source flow is proven to work.
+This is a guided, read-only workflow with no bundled parsers. Gather actual output, adapt to the device, and cite sources for externally verified claims. Audit runs are not recorded in the device inventory: the audit report is the record.

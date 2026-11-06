@@ -37,8 +37,6 @@ The change log is pruned on **every write**: entries older than **105 days**
 are deleted immediately, the log is capped at 500 entries, and only
 config/rollback lifecycle actions are kept at all. `*-pending` entries never
 age out — an unresolved pending is exactly the artifact you must see.
-Security-audit runs are stored separately (`.security_audits`, last 100 runs)
-and are only written when a security audit is actually performed.
 
 ## Troubleshooting procedure
 

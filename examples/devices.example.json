@@ -37,79 +37,14 @@
       "ts": "2026-11-01T02:32:50Z",
       "hostname": "switch-lab-1",
       "reason": "example: add management vlan",
-      "rollback_file": "/home/YOURUSER/.ntnroute/backups/switch-lab-1-20261101-093136-rollback.cmd"
+      "rollback_file": "/home/YOURUSER/.ntnroute/backups/switch-lab-1/2026-11/20261101-093136-12345.rollback.cmd"
     }
   ],
   "audit": [
     { "ts": "2026-10-31T18:35:35Z", "action": "add", "detail": "router-lab-1 (203.0.113.10) Cisco Router" },
-    { "ts": "2026-11-01T02:31:40Z", "action": "sync", "detail": "2 lines -> /home/YOURUSER/.ntnroute/backups/switch-lab-1_sync_20261101-093131.cfg" },
-    { "ts": "2026-11-01T02:32:50Z", "action": "config-pending", "detail": "switch-lab-1 (203.0.113.11): 2 lines, reason 'example: add management vlan'" },
-    { "ts": "2026-11-01T02:32:55Z", "action": "config-started", "detail": "switch-lab-1 (203.0.113.11)" },
-    { "ts": "2026-11-01T02:33:10Z", "action": "config-ok", "detail": "switch-lab-1 (203.0.113.11): 2/2 lines verified" }
-  ],
-  "security_audits": [
-    {
-      "run_id": "20261101-094015",
-      "trigger": "explicit",
-      "scope": "all",
-      "status": "complete",
-      "started_at": "2026-11-01T02:40:15Z",
-      "finished_at": "2026-11-01T02:41:02Z",
-      "summary": { "devices": 2, "complete": 2, "unreachable": 0, "critical_runs": 1 },
-      "devices": [
-        {
-          "id": 1,
-          "hostname": "router-lab-1",
-          "ip": "203.0.113.10",
-          "brand": "Cisco",
-          "os": "IOS 15.4",
-          "status": "complete",
-          "error": "",
-          "counts": { "CRITICAL": 1, "MEDIUM": 1, "INFO": 1 },
-          "findings": [
-            {
-              "severity": "CRITICAL",
-              "rule": "service-insecure",
-              "category": "service exposure",
-              "why": "telnet ENABLED — port 23 plaintext, credentials & data travel unencrypted",
-              "evidence": "telnet port=23"
-            },
-            {
-              "severity": "MEDIUM",
-              "rule": "vty-accesslist",
-              "category": "management plane",
-              "why": "VTY lines have no access-class restriction — SSH is open to any source",
-              "evidence": "line vty 0 4 has no access-class"
-            },
-            {
-              "severity": "INFO",
-              "rule": "banner",
-              "category": "informational",
-              "why": "no login banner configured",
-              "evidence": "no banner motd"
-            }
-          ]
-        },
-        {
-          "id": 2,
-          "hostname": "switch-lab-1",
-          "ip": "203.0.113.11",
-          "brand": "Mikrotik",
-          "os": "RouterOS 7.18",
-          "status": "complete",
-          "error": "",
-          "counts": { "CRITICAL": 0, "MEDIUM": 0, "INFO": 1 },
-          "findings": [
-            {
-              "severity": "INFO",
-              "rule": "neighbor-discovery",
-              "category": "informational",
-              "why": "neighbor discovery enabled on all interfaces",
-              "evidence": "/ip neighbor discovery-settings"
-            }
-          ]
-        }
-      ]
-    }
+    { "ts": "2026-11-01T02:31:40Z", "action": "sync", "detail": "2 lines -> /home/YOURUSER/.ntnroute/backups/switch-lab-1/2026-11/20261101-093131-sync.cfg" },
+    { "ts": "2026-11-01T02:32:50Z", "action": "config-pending", "detail": "switch-lab-1 (203.0.113.11): example: add management vlan — script: /tmp/change.cmd (2 lines)" },
+    { "ts": "2026-11-01T02:32:55Z", "action": "config-started", "detail": "switch-lab-1 (203.0.113.11): example: add management vlan — script: /tmp/change.cmd (2 lines)" },
+    { "ts": "2026-11-01T02:33:10Z", "action": "config-ok", "detail": "switch-lab-1 (203.0.113.11): example: add management vlan" }
   ]
 }
