@@ -104,6 +104,17 @@ The engine performs: pre snapshot → apply → save → refresh inventory snaps
 
 **Keep the repo and the installed copy in sync.** This skill exists twice: the repo source (`~/ntnroute/skills/...`, the committed truth) and the installed copy (`~/.hermes/skills/networking/...`, what the agent loads). `install.sh` copies repo → installed, so a patch written only to the installed copy is lost on the next install. Patch the repo, then `install.sh`, then commit.
 
+**The installed tree is shared state, not a mirror.** `install.sh` syncs through a manifest (`.ntn_manifest`, path + sha256 per file it installed): repo-owned files are overwritten, repo-owned files the repo dropped are removed, and anything the installer did not install — an agent-authored reference, a curator write — is preserved and reported as `NOTE: preserved`. A repo-owned file that was edited locally is overwritten with the repo version and the local copy is kept beside it as `<file>.local-<ts>` (`--force` discards it instead; `--dry-run` shows the plan without touching anything). The repo remains the source of truth: never treat the installed tree as durable storage.
+
+## Engine and repo changes — plan first
+
+Engine or repo-infrastructure changes follow the user's gate, not the device gate:
+
+1. Present the plan first — what changes, why, blast radius on existing features — and wait for approval before editing anything. "Continue" after a plan is approval; a bare "do it" that arrives before any plan is not.
+2. Touch only what the request names. Adjacent cleanup, style fixes, and consolidation are a separate proposal, never bundled in.
+3. On "revert" / "don't change anything": restore immediately (`git checkout -- <file>`), confirm the restore, and stop — do not re-argue and do not re-apply later in the session.
+4. Verify before claiming done: isolated unit test of each changed function, then the live-lab procedure in `references/engine-release-checks.md`. State plainly which parts were exercised and which are pending.
+
 ## Test status
 
 Proven end-to-end (not just designed):
@@ -146,6 +157,16 @@ Per-brand behavior is data, not code: `~/.ntnroute/brands.json` entries override
 - **RouterOS always exits 0 even when a command fails.** Errors are detected from output patterns: `invalid value`, `no such item`, `syntax error`, `expected end of command`, `bad command name`, `ambiguous`, `failure:`. The engine has these patterns in `err_pattern`.
 - RouterOS exec-mode **does not keep context between lines**. The menu style `/interface ethernet` then `set [ find ... ]` fails (`expected end of command`) because each line runs as a standalone command. The engine normalizes scripts via `mt_normalize()`: pure path lines are merged into the next line as one full-path command. Write MikroTik scripts with the full path per line, or let the engine merge them — never rely on menu context.
 - **Functional read-back is the only success criterion.** Choose show/print/display commands that prove the requested outcome (neighbor state, route, interface status, service state, policy counters, reachability). Do not infer success from the textual rendering of a configuration export.
+
+### Portability and engine-code pitfalls (bash 3.2 / BSD)
+
+The engine claims Linux + macOS + Windows support; every construct must exist in macOS's stock bash 3.2 and BSD userland.
+
+- No bash-4-only expansions: `${x,,}`, `${x^}`, `declare -A`, `mapfile`. On macOS `/bin/bash` is 3.2 and these are a hard `bad substitution` — `ntn add` dies at brand normalization. Use `tr`-based helpers (`lc`/`ucfirst` in the engine).
+- No `find -printf` (GNU-only): BSD find rejects it, and `2>/dev/null` swallows the error, so retention and migration silently do nothing and backups grow unbounded. Use `-exec basename {} \;` when names suffice; plain `find` output when the full path is needed.
+- `date -d` is GNU-only; BSD needs `date -j -f <fmt>`. Parse the engine's own `YYYYMMDD-HHMMSS` stamp by shell pattern first — `date` only as a last-resort fallback.
+- After fixing one instance of a portability construct, grep the whole engine for the same construct class — instances never occur alone.
+- Cleanup of a staged artifact belongs inside the function that publishes it, executed before any retention/migration call: migration relocates the file, so a cleanup placed after the publishing call operates on a path that no longer exists and the duplicate survives.
 
 ### General
 - SSH uses the OpenSSH CLI, not paramiko/Python. Sessions use `ssh -tt` with a scheduled (delay-TAB command) plan via stdin; passwords go through `SSH_ASKPASS` + `SSH_ASKPASS_REQUIRE=force`.

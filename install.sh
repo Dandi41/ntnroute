@@ -70,13 +70,105 @@ chmod 700 "$NTN_HOME"
 ok "data dir ready: $NTN_HOME (devices.json mode 600)"
 
 # --- optional: Hermes skills --------------------------------------------------
+# Manifest-based sync. The installer owns only what it installed, tracked in
+# .ntn_manifest (path + sha256 at install time). Everything else in the
+# installed tree — an agent-authored reference, a curator write — is preserved,
+# never deleted. A repo-owned file that was edited locally: the repo version
+# wins and the local copy is kept as <file>.local-<ts> (--force discards it).
+SKILLS="ntnroute network-device-cli network-change-management network-troubleshooting network-security-audit"
+MANIFEST="$HERMES_SKILLS/.ntn_manifest"
+DRY_RUN=0; FORCE=0
+for arg in "$@"; do
+  case "$arg" in
+    --dry-run) DRY_RUN=1 ;;
+    --force)   FORCE=1 ;;
+    *) err "unknown option: $arg (supported: --dry-run, --force)" ;;
+  esac
+done
+hash_file() {
+  if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1
+  elif command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | cut -d' ' -f1
+  else openssl dgst -sha256 -r "$1" | cut -d' ' -f1; fi
+}
+if [ "$DRY_RUN" = 1 ]; then
+  do_rm() { echo "DRY-RUN: rm -f $*"; }
+  do_put() { echo "DRY-RUN: install $1 -> $2"; }
+else
+  do_rm() { rm -f "$@"; }
+  do_put() { mkdir -p "$(dirname "$2")"; cp -f "$1" "$2"; }
+fi
+
 if [ -d "$HOME/.hermes" ]; then
   mkdir -p "$HERMES_SKILLS"
-  for s in ntnroute network-device-cli network-change-management network-troubleshooting network-security-audit; do
-    rm -rf "$HERMES_SKILLS/$s"
-    cp -r "$REPO_DIR/skills/$s" "$HERMES_SKILLS/$s"
+  HAVE_MANIFEST=0
+  if [ -f "$MANIFEST" ]; then HAVE_MANIFEST=1; fi
+
+  # Safety net: snapshot the current tree before touching it (keep the last 5).
+  if [ "$DRY_RUN" = 0 ]; then
+    snap="$NTN_HOME/backups/skills-$(date +%Y%m%d-%H%M%S).tar.gz"
+    if tar -czf "$snap" -C "$HERMES_SKILLS" . 2>/dev/null; then
+      ok "pre-install snapshot: $snap (last 5 kept)"
+    else
+      echo "NOTE: pre-install snapshot failed — continuing without it"
+    fi
+    old_snaps=$(ls -1t "$NTN_HOME"/backups/skills-*.tar.gz 2>/dev/null | tail -n +6 || true)
+    for old in $old_snaps; do rm -f "$old"; done
+  fi
+
+  # 1. Prune repo-owned files the repo no longer ships (needs a manifest).
+  if [ "$HAVE_MANIFEST" = 1 ]; then
+    while read -r rel h; do
+      [ -n "$rel" ] || continue
+      if [ ! -e "$REPO_DIR/skills/$rel" ] && [ -f "$HERMES_SKILLS/$rel" ]; then
+        echo "NOTE: removed stale repo-owned file: $rel"
+        do_rm "$HERMES_SKILLS/$rel"
+      fi
+    done < "$MANIFEST"
+  fi
+
+  # 2. Install repo files with the four-way decision.
+  OUT="$MANIFEST.new"
+  if [ "$DRY_RUN" = 1 ]; then OUT=/dev/null; fi
+  : > "$OUT" 2>/dev/null || true
+  for s in $SKILLS; do
+    src="$REPO_DIR/skills/$s"; dest="$HERMES_SKILLS/$s"
+    [ -d "$src" ] || continue
+    while IFS= read -r rel; do
+      [ -n "$rel" ] || continue
+      key="$s/$rel"
+      h=$(hash_file "$src/$rel")
+      if [ "$DRY_RUN" = 0 ]; then printf '%s %s\n' "$key" "$h" >> "$OUT"; fi
+      d="$dest/$rel"
+      if [ -e "$d" ] && [ "$HAVE_MANIFEST" = 1 ]; then
+        old=$(awk -v k="$key" '$1==k{print $2; exit}' "$MANIFEST")
+        cur=$(hash_file "$d")
+        if [ -n "$old" ] && [ "$old" != "$cur" ]; then
+          if [ "$FORCE" = 1 ]; then
+            echo "WARNING: local edits discarded (--force): $key"
+          else
+            stamp2=$(date +%Y%m%d-%H%M%S)
+            echo "WARNING: local edits saved: $key -> $rel.local-$stamp2"
+            do_put "$d" "$d.local-$stamp2"
+          fi
+        fi
+      fi
+      do_put "$src/$rel" "$d"
+    done < <(cd "$src" && find . -type f | sed 's|^\./||' | sort)
   done
-  ok "Hermes skills copied to $HERMES_SKILLS (restart Hermes to load them)"
+
+  # 3. Report what the installer does not own and therefore never touches.
+  ( cd "$HERMES_SKILLS" && find . -type f ! -name '.ntn_manifest*' ! -name '*.new' | sed 's|^\./||' ) \
+    | while IFS= read -r rel; do
+        [ -e "$REPO_DIR/skills/$rel" ] || echo "NOTE: preserved agent-authored file: $rel"
+      done
+
+  if [ "$DRY_RUN" = 1 ]; then
+    echo "DRY-RUN: nothing written. Re-run without --dry-run to apply."
+  else
+    sort -u "$MANIFEST.new" > "$MANIFEST"
+    rm -f "$MANIFEST.new"
+    ok "Hermes skills synced to $HERMES_SKILLS (restart Hermes to load them)"
+  fi
 else
   echo "NOTE: ~/.hermes not found — skipped skill install (engine works standalone)."
 fi
