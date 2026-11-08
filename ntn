@@ -181,6 +181,10 @@ archive_pair() {
   cp "$finalcfg" "$tmpcfg" && cp "$rollback" "$tmprb" || { rm -f "$tmpcfg" "$tmprb"; return 1; }
   mv "$tmpcfg" "$dir/$pair.cfg" && mv "$tmprb" "$dir/$pair.rollback.cmd" || return 1
   chmod 600 "$dir/$pair.cfg" "$dir/$pair.rollback.cmd"
+  # The pair now owns the rollback. Consume the staging copy BEFORE retention
+  # runs: migrate_backups would otherwise relocate it into the month folder,
+  # where it survives as a duplicate and eats a sync-snapshot retention slot.
+  rm -f "$rollback"
   retain_backups "$host"
   printf '%s/%s' "$dir" "$pair"
 }
@@ -887,10 +891,6 @@ cmd_config() {
         rbfile="$archive.rollback.cmd"
         db_write '(.devices[] | select(.id==$id)).check_point = $rb' --argjson id "$id" --rawfile rb "$rbfile"
         echo "Backup archive: $archive.cfg + $archive.rollback.cmd"
-        # The rollback now lives inside the published pair. Drop the staging copy
-        # at the backups root, otherwise every change leaves an orphan duplicate
-        # that also eats a slot in the sync-snapshot retention quota.
-        rm -f "$BACKUP_DIR/$hostname-$ts-rollback.cmd" 2>/dev/null || true
       else
         # Fallback: keep the rollback beside the change archives, not loose.
         local fdir fb
