@@ -73,7 +73,7 @@ Der Installer:
 1. prüft `jq` und `ssh`,
 2. installiert die Engine nach `~/.ntnroute/ntn` (Modus 700) und verlinkt sie als `~/.local/bin/ntn`,
 3. erstellt `~/.ntnroute/` mit leerem Inventar (Modus 600),
-4. kopiert bei [Hermes Agent](https://hermes-agent.nousresearch.com) die fünf Skills nach `~/.hermes/skills/networking/`.
+4. kopiert bei [Hermes Agent](https://hermes-agent.nousresearch.com) die fünf Skills über ein Manifest (`.ntn_manifest`) nach `~/.hermes/skills/networking/`: repo-eigene Dateien werden aktualisiert, im Repo entfernte Dateien gelöscht, und alles, was der Installer nicht selbst installiert hat — eine vom Agenten geschriebene Referenz, eine lokale Bearbeitung — bleibt erhalten (eine lokal geänderte repo-eigene Datei wird als `<file>.local-<ts>` neben der neuen abgelegt). Ein Snapshot des Skill-Baums vor der Installation landet in `~/.ntnroute/backups/` (die letzten 5 bleiben). Flags: `--dry-run` zeigt den Plan, ohne etwas zu ändern, `--force` verwirft lokale Bearbeitungen an repo-eigenen Dateien.
 
 ### Windows (nativ, ohne WSL)
 
@@ -83,12 +83,12 @@ NTnRoute läuft auch nativ unter Windows über Git for Windows (MSYS2-bash) — 
 2. Öffne **Git Bash** und führe aus:
 
 ```bash
-git clone -b beta https://github.com/Dandi41/ntnroute.git ~/ntnroute
+git clone https://github.com/Dandi41/ntnroute.git ~/ntnroute
 cd ~/ntnroute
 bash install.sh
 ```
 
-Unter Windows erkennt der Installer MSYS2 automatisch: die Engine landet in `~/.ntnroute/ntn`, `ntn` wird als Kopie in `~/.local/bin` abgelegt (Windows-Symlinks brauchen Rechte), und fehlt `jq`, lädt der Installer `jq.exe` nach `~/.ntnroute/bin` (die Engine ergänzt dieses Verzeichnis selbst zur `PATH`). Findet die Shell `ntn` nach der Installation nicht, ergänze `~/.local/bin` im PATH, wie der Installer vorschlägt. Alle Befehle verhalten sich genau wie unter Linux/macOS; interaktive Vendor-Sitzungen laufen über die MSYS2-PTY. Die Windows-Unterstützung liegt im Zweig `beta`, bis er gemergt ist.
+Unter Windows erkennt der Installer MSYS2 automatisch: die Engine landet in `~/.ntnroute/ntn`, `ntn` wird als Kopie in `~/.local/bin` abgelegt (Windows-Symlinks brauchen Rechte), und fehlt `jq`, lädt der Installer `jq.exe` nach `~/.ntnroute/bin` (die Engine ergänzt dieses Verzeichnis selbst zur `PATH`). Findet die Shell `ntn` nach der Installation nicht, ergänze `~/.local/bin` im PATH, wie der Installer vorschlägt. Alle Befehle verhalten sich genau wie unter Linux/macOS; interaktive Vendor-Sitzungen laufen über die MSYS2-PTY. Die Windows-Unterstützung ist im Hauptzweig enthalten.
 
 ## Schnellstart
 
@@ -121,7 +121,7 @@ Eine Config-Änderung läuft immer: Plan → Freigabe → Anwenden → Verifizie
 ## Sicherheitshinweise
 
 - Passwörter werden **im Klartext** in `~/.ntnroute/devices.json` gespeichert (Modus 600, nur für den Besitzer). Bewahre diese Datei gut auf, damit sie nicht über die Maschine hinaus verbreitet wird.
-- `ntn show <ref>` maskiert Passwörter standardmäßig.
+- `ntn show <ref>` zeigt gespeicherte Zugangsdaten nie an — Passwörter sind nur Transporteingabe.
 - Config-Backups unter `~/.ntnroute/backups/` enthalten dieselben Geräte-Geheimnisse — mit derselben Sorgfalt behandeln.
 ## Status & Ehrlichkeit
 

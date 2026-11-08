@@ -73,7 +73,7 @@ El instalador:
 1. comprueba `jq` y `ssh`,
 2. instala el motor en `~/.ntnroute/ntn` (modo 700) y crea el enlace simbólico `~/.local/bin/ntn`,
 3. crea `~/.ntnroute/` con un inventario vacío (modo 600),
-4. si usas [Hermes Agent](https://hermes-agent.nousresearch.com), copia las cinco skills a `~/.hermes/skills/networking/`.
+4. si usas [Hermes Agent](https://hermes-agent.nousresearch.com), sincroniza las cinco skills en `~/.hermes/skills/networking/` mediante un manifiesto (`.ntn_manifest`): los archivos del repo se actualizan, los que el repo eliminó se borran, y todo lo que el instalador no instaló — una referencia escrita por el agente, una edición local — se conserva (un archivo del repo editado localmente se guarda junto al nuevo como `<file>.local-<ts>`). Una instantánea del árbol de skills previa a la instalación queda en `~/.ntnroute/backups/` (se conservan las últimas 5). Banderas: `--dry-run` muestra el plan sin tocar nada, `--force` descarta las ediciones locales de archivos del repo.
 
 ### Windows (nativo, sin WSL)
 
@@ -83,12 +83,12 @@ NTnRoute también se ejecuta de forma nativa en Windows mediante Git for Windows
 2. Abre **Git Bash** y ejecuta:
 
 ```bash
-git clone -b beta https://github.com/Dandi41/ntnroute.git ~/ntnroute
+git clone https://github.com/Dandi41/ntnroute.git ~/ntnroute
 cd ~/ntnroute
 bash install.sh
 ```
 
-En Windows el instalador detecta MSYS2 automáticamente: el motor se instala en `~/.ntnroute/ntn`, `ntn` se coloca en `~/.local/bin` como copia (los symlinks de Windows requieren privilegios) y, si falta `jq`, descarga `jq.exe` en `~/.ntnroute/bin` (el motor añade ese directorio al `PATH` por sí mismo en tiempo de ejecución). Si el shell no encuentra `ntn` tras la instalación, añade `~/.local/bin` al PATH como sugiere el instalador. Todos los comandos se comportan igual que en Linux/macOS; las sesiones interactivas de fabricantes usan la PTY de MSYS2. El soporte de Windows está en la rama `beta` hasta que se fusione.
+En Windows el instalador detecta MSYS2 automáticamente: el motor se instala en `~/.ntnroute/ntn`, `ntn` se coloca en `~/.local/bin` como copia (los symlinks de Windows requieren privilegios) y, si falta `jq`, descarga `jq.exe` en `~/.ntnroute/bin` (el motor añade ese directorio al `PATH` por sí mismo en tiempo de ejecución). Si el shell no encuentra `ntn` tras la instalación, añade `~/.local/bin` al PATH como sugiere el instalador. Todos los comandos se comportan igual que en Linux/macOS; las sesiones interactivas de fabricantes usan la PTY de MSYS2. El soporte de Windows está en la rama principal.
 
 ## Inicio rápido
 
@@ -121,7 +121,7 @@ Un cambio de configuración es siempre: plan → aprobación → aplicar → ver
 ## Notas de seguridad
 
 - Las contraseñas se guardan **en texto plano** en `~/.ntnroute/devices.json` (modo 600, solo el propietario). Cuida bien ese archivo para que no se difunda fuera de la máquina.
-- `ntn show <ref>` enmascara las contraseñas por defecto.
+- `ntn show <ref>` nunca muestra las credenciales guardadas — las contraseñas son solo entrada de transporte.
 - Los backups de configuración en `~/.ntnroute/backups/` contienen los mismos secretos de los dispositivos — trátalos con el mismo cuidado.
 ## Estado y honestidad
 

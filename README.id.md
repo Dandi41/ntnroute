@@ -72,7 +72,7 @@ Installer akan:
 1. memeriksa `jq` dan `ssh`,
 2. memasang engine ke `~/.ntnroute/ntn` (mode 700) dan symlink sebagai `~/.local/bin/ntn`,
 3. membuat `~/.ntnroute/` dengan inventaris kosong (mode 600),
-4. kalau kamu memakai [Hermes Agent](https://hermes-agent.nousresearch.com), menyalin lima skill ke `~/.hermes/skills/networking/`.
+4. kalau kamu memakai [Hermes Agent](https://hermes-agent.nousresearch.com), menyelaraskan lima skill ke `~/.hermes/skills/networking/` lewat manifest (`.ntn_manifest`): file milik repo diperbarui, file yang dihapus dari repo dibersihkan, dan apa pun yang bukan hasil instalasi installer — referensi buatan agent, editan lokal — dipertahankan (file repo yang diedit lokal disimpan di sebelahnya sebagai `<file>.local-<ts>`). Snapshot pohon skill sebelum install mendarat di `~/.ntnroute/backups/` (5 terakhir disimpan). Flag: `--dry-run` menampilkan rencana tanpa menyentuh apa pun, `--force` membuang editan lokal pada file milik repo.
 
 ### Windows (native, tanpa WSL)
 
@@ -82,12 +82,12 @@ NTnRoute juga berjalan native di Windows melalui Git for Windows (bash MSYS2) �
 2. Buka **Git Bash**, lalu jalankan:
 
 ```bash
-git clone -b beta https://github.com/Dandi41/ntnroute.git ~/ntnroute
+git clone https://github.com/Dandi41/ntnroute.git ~/ntnroute
 cd ~/ntnroute
 bash install.sh
 ```
 
-Di Windows installer mendeteksi MSYS2 secara otomatis: engine terpasang di `~/.ntnroute/ntn`, `ntn` diletakkan di `~/.local/bin` sebagai salinan (symlink Windows butuh privilege), dan bila `jq` tidak ada ia mengunduh `jq.exe` ke `~/.ntnroute/bin` (engine menambahkan direktori itu ke `PATH` sendiri saat runtime). Bila shell tidak menemukan `ntn` setelah instalasi, tambahkan `~/.local/bin` ke PATH seperti saran installer. Semua command berperilaku sama seperti di Linux/macOS; sesi interaktif vendor berjalan lewat PTY MSYS2. Dukungan Windows ada di branch `beta` sampai digabung ke `main`.
+Di Windows installer mendeteksi MSYS2 secara otomatis: engine terpasang di `~/.ntnroute/ntn`, `ntn` diletakkan di `~/.local/bin` sebagai salinan (symlink Windows butuh privilege), dan bila `jq` tidak ada ia mengunduh `jq.exe` ke `~/.ntnroute/bin` (engine menambahkan direktori itu ke `PATH` sendiri saat runtime). Bila shell tidak menemukan `ntn` setelah instalasi, tambahkan `~/.local/bin` ke PATH seperti saran installer. Semua command berperilaku sama seperti di Linux/macOS; sesi interaktif vendor berjalan lewat PTY MSYS2. Dukungan Windows sudah ada di branch utama.
 
 ## Mulai cepat
 
@@ -120,7 +120,7 @@ Perubahan config selalu: rencana → persetujuan → apply → verifikasi. Skill
 ## Catatan keamanan
 
 - Password disimpan **dalam plaintext** di `~/.ntnroute/devices.json` (mode 600, owner-only). Jaga baik-baik file tersebut agar tidak tersebar luas.
-- `ntn show <ref>` menyamarkan password secara default.
+- `ntn show <ref>` tidak pernah menampilkan kredensial tersimpan — password hanya input transport.
 - Backup config di `~/.ntnroute/backups/` memuat rahasia device yang sama — perlakukan dengan kehati-hatian yang sama.
 ## Status & kejujuran
 

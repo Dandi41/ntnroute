@@ -73,7 +73,7 @@ cd ntnroute
 1. `jq` と `ssh` を確認し、
 2. エンジンを `~/.ntnroute/ntn`（モード700）にインストールし、`~/.local/bin/ntn` にシンボリックリンクを作成し、
 3. 空のインベントリ（モード600）で `~/.ntnroute/` を作成し、
-4. [Hermes Agent](https://hermes-agent.nousresearch.com) を使っている場合は、5つのスキルを `~/.hermes/skills/networking/` にコピーします。
+4. [Hermes Agent](https://hermes-agent.nousresearch.com) を使っている場合は、マニフェスト（`.ntn_manifest`）を介して5つのスキルを `~/.hermes/skills/networking/` に同期します：リポジトリ所有のファイルは更新され、リポジトリから削除されたファイルは取り除かれ、インストーラーが設置したもの以外 — エージェントが書いたリファレンスやローカル編集 — は保持されます（ローカルで編集されたリポジトリのファイルは `<file>.local-<ts>` として新しいファイルの隣に保存されます）。インストール前のスキルツリーのスナップショットは `~/.ntnroute/backups/` に保存されます（直近5つを保持）。フラグ：`--dry-run` は何も触れずに計画を表示、`--force` はリポジトリ所有ファイルへのローカル編集を破棄します。
 
 ### Windows（ネイティブ、WSL 不要）
 
@@ -83,12 +83,12 @@ NTnRoute は Git for Windows（MSYS2 bash）経由で Windows でもネイティ
 2. **Git Bash** を開いて実行：
 
 ```bash
-git clone -b beta https://github.com/Dandi41/ntnroute.git ~/ntnroute
+git clone https://github.com/Dandi41/ntnroute.git ~/ntnroute
 cd ~/ntnroute
 bash install.sh
 ```
 
-Windows ではインストーラーが MSYS2 を自動検出します：エンジンは `~/.ntnroute/ntn` に、`ntn` はコピーとして `~/.local/bin` に置かれ（Windows のシンボリックリンクには権限が必要）、`jq` が無ければ `jq.exe` を `~/.ntnroute/bin` にダウンロードします（エンジンが実行時に自前でそのディレクトリを `PATH` に追加）。インストール後にシェルが `ntn` を見つけられない場合は、インストーラーの案内どおり `~/.local/bin` を PATH に追加してください。すべてのコマンドは Linux/macOS と同じように動作し、ベンダーとの対話セッションは MSYS2 の PTY を使います。Windows 対応は `beta` ブランチにあります（マージまで）。
+Windows ではインストーラーが MSYS2 を自動検出します：エンジンは `~/.ntnroute/ntn` に、`ntn` はコピーとして `~/.local/bin` に置かれ（Windows のシンボリックリンクには権限が必要）、`jq` が無ければ `jq.exe` を `~/.ntnroute/bin` にダウンロードします（エンジンが実行時に自前でそのディレクトリを `PATH` に追加）。インストール後にシェルが `ntn` を見つけられない場合は、インストーラーの案内どおり `~/.local/bin` を PATH に追加してください。すべてのコマンドは Linux/macOS と同じように動作し、ベンダーとの対話セッションは MSYS2 の PTY を使います。Windows 対応はメインブランチに含まれています。
 
 ## クイックスタート
 
@@ -121,7 +121,7 @@ ntn sync <ref|all>
 ## セキュリティに関する注意
 
 - パスワードは `~/.ntnroute/devices.json` に**平文**で保存されます（モード600、所有者のみ）。ファイルがマシンの外に広がらないよう、厳重に管理してください。
-- `ntn show <ref>` はデフォルトでパスワードをマスクします。
+- `ntn show <ref>` は保存された認証情報を一切表示しません。パスワードは転送時の入力としてのみ使われます。
 - `~/.ntnroute/backups/` のコンフィグバックアップにも同じデバイスの秘密が含まれます — 同様に慎重に扱ってください。
 ## ステータスと正直さ
 
