@@ -1,84 +1,127 @@
 ---
 name: network-security-audit
 description: "Audit network device security: local hardening and perimeter."
-version: 1.0.0
+version: 1.1.0
 author: Dandi Suryadi, Hermes Agent
 license: MIT
 metadata:
   hermes:
-    tags: [network, security, audit, cve, hardening, perimeter, cisco, mikrotik, compliance]
+    tags: [network, security, audit, cve, hardening, perimeter, compliance]
     related_skills: [ntnroute, network-device-cli, network-change-management, network-troubleshooting]
 ---
 
 # Network Security Audit
 
-Read-only during the audit; remediation goes through the `network-change-management` skill. The audit is a **guided procedure**, not a vendor-specific parser: identify platform from live evidence, choose safe read-only commands, interpret output, and research uncertain findings. Never assume examples are supported on every release.
+Security audit of a network device in two directions at once: **local** (is the
+device itself hardened) and **perimeter** (what can reach it from outside).
+Read-only for the entire run; remediation is a separate skill with its own
+approval gate.
+
+This is a guided procedure, not a bundled parser. Vendors differ in syntax,
+output shape, and even in which controls exist — so the skill supplies the
+*order of thinking* and a control catalog, and you supply the platform-specific
+commands, verified against official documentation.
 
 ## Core rules
 
-1. **Audit only when the user asks.** Never run an audit proactively
-   ("while we're at it", "to be thorough"). Triggers: the user requests an
-   audit, a security check, or an incident that needs a security assessment.
-2. **Read-only.** All audit commands are read-only (`show`, `print`,
-   `display`). No state changes during the audit.
-3. **Report, never authorize or veto.** A security audit produces evidence,
-   severity, and remediation advice only. It never blocks, permits, delays,
-   or otherwise decides a requested configuration change — including a change
-   that removes DHCP clients, firewall rules, services, routes, or accounts.
-   The user decides whether to change configuration; the change workflow
-   handles consent, rollback, and verification separately.
-4. **Evidence, not opinion.** Every finding has command output plus, for
-   CVEs, an official link. Without a link → write "not yet verified".
-5. **Both sides:** local (device hardening) and perimeter (what can be
-   reached from outside). The perimeter is usually the more fatal side.
-6. **CVEs from research, not memory.** The OS version comes from the device,
-   CVEs are researched via the web from official sources (vendor PSIRT →
-   NVD), and relevance is checked against the features actually in use.
+1. **Audit only when the user asks.** Never run one proactively — not "while
+   we're at it", not "to be thorough". Triggers: an explicit audit request, a
+   security check, or an incident that needs a security assessment.
+2. **Read-only, start to finish.** Every audit command is `show` / `print` /
+   `display` / `get`. No `set`, `configure`, `no`, `undo`, `write`, `save`,
+   `commit`. If your evidence gathering would change state, it is the wrong
+   command.
+3. **Report, never authorize or veto.** The audit produces evidence, severity,
+   and remediation advice. It never blocks, permits, delays, or decides a
+   change the user asked for — including one that removes DHCP clients,
+   firewall rules, services, routes, or accounts. The user decides; the change
+   workflow handles consent, rollback, and verification.
+4. **Evidence, not opinion.** Every finding carries verbatim command output
+   plus, for CVEs, an official link. No output → `not checked`. No link →
+   `not yet verified`.
+5. **Both directions.** Local hardening and perimeter exposure. The perimeter
+   is usually the more fatal side, and the combination findings ("telnet on,
+   and reachable from the WAN") are the ones that get exploited.
+6. **CVEs from research, not memory.** Version comes from the device, CVEs come
+   from the vendor PSIRT then NVD, and relevance comes from the features you
+   actually found enabled.
+7. **Unknown is not safe.** An unreachable device or an unverifiable control is
+   `unknown` / `not checked`. Never `pass`. Never "secure".
 
 ## When to Use
 
-- User asks: "audit the security of the lab RouterOS device", "check network
+- "Audit the security of the lab RouterOS device", "check our network
   security", "is this device secure?"
-- Before a new device goes into production (initial audit)
-- After an incident: audit + `network-troubleshooting` for forensics
+- Before a device enters production (initial audit)
+- After an incident: audit plus `network-troubleshooting` for forensics
+- Fleet review, when the user names a set of devices
 
-Not for: changing config (→ `network-change-management`), diagnosing
-outages (→ `network-troubleshooting`), adding devices (→ `ntnroute`).
+Not for: changing config (→ `network-change-management`), diagnosing outages
+(→ `network-troubleshooting`), adding devices (→ `ntnroute`).
 
-## Audit Procedure
+## Procedure
 
-### 1. Confirm scope with the user
+The full step-by-step is **`references/audit-playbook.md`** — seven phases,
+each with its exit condition and per-platform command blocks. Read it before
+starting; the summary here is the shape, not the detail.
 
-One short question: audit one device or all of them? Focus on local,
-perimeter, or both? Don't assume.
+### Phase 0 — Scope
 
-### 2. Collect live evidence (manual, read-only)
+One short question to the user: which devices, local or perimeter or both, and
+whether an active outside-in test is permitted. Record it. Don't assume.
 
-Use the `ntnroute` skill's approved read-only access. Do not use a pre-baked audit script: syntax and output vary across vendors, OS versions, roles, and models.
+### Phase 1 — Identity and reachability
 
-1. Identify vendor/OS/version and device role from inventory and live evidence; if uncertain, ask for safe version/show output.
-2. Choose relevant checks from `references/baselines.md` and official docs. Ask for missing context (e.g. intended management source ranges or exposed services).
-3. Run a small batch of relevant read-only commands and retain raw output. If syntax is rejected, verify it from official docs before alternatives.
-4. If unreachable, report **unknown / not audited**, never secure.
-5. Verify feature applicability; separate observed facts from inference and state confidence.
+Confirm the device answers, then pin down exact vendor, model, OS train,
+version, and build. No device-specific phase proceeds on a guess about the
+platform. Version ≠ patch level.
 
-For multiple devices, repeat and record findings per device. Never claim the fleet is clean if devices/checks were unreachable or unverified.
+### Phase 2 — Management plane
 
-### 2b. Check the change log (when change-related)
+Services, protocols, accounts, session policy. This phase comes early because
+exposed management is the most common real compromise path.
 
-Read the config/rollback timeline and attempts with no verdict (`network-troubleshooting` → `references/audit-trail.md`). Record out-of-band changes and unsettled applies; verify live config before trusting stored snapshots.
+### Phase 3 — Perimeter and forwarding
 
-### 3. CVE + version research (if requested or a suspicious version shows up)
+Zones first, then filters in **rule order**. Read reachability of what you
+found enabled in Phase 2. Counters tell you what the policy is doing; the
+config tells you what it claims.
 
-Identify exact product, OS train, version, hardware/model and relevant features. Follow `references/threat-research.md`: vendor PSIRT first → verify in NVD → confirm affected/fixed versions and feature relevance. Cite URLs; state when unverified.
+### Phase 4 — Control plane
 
-### 4. Assess against the baseline
+SSH/SNMP versions, logging, NTP, routing authentication, L2 protections where
+the role needs them, IPv6 handled deliberately.
 
-Use `references/baselines.md` as a framework, not a vendor parser or exhaustive oracle. Adapt to platform and role; distinguish `not applicable`, `not checked`, and `unknown`. Verify command examples against official docs.
+### Phase 5 — Change trail and drift
 
-### 5. Assemble the report
+```bash
+NTN_INTERNAL=1 ntn audit pending    # no verdict at all → state UNKNOWN
+NTN_INTERNAL=1 ntn audit failed
+NTN_INTERNAL=1 ntn audit config 50  # device timeline
+```
 
-Use `templates/audit-report-template.md`: scope, inventory, reachability/completeness, evidence-backed findings with confidence, sources/CVEs, perimeter exposure, limitations, and proposed hardening. Do not execute remediation or recommend recurring audits.
+Out-of-band changes and unsettled applies are findings in their own right.
+Vocabulary and recovery: `network-troubleshooting` → `references/audit-trail.md`.
+
+### Phase 6 — Version, lifecycle, CVE
+
+Follow `references/threat-research.md`: lifecycle status → vendor PSIRT → NVD
+cross-check → feature applicability → record with URL and research date.
+
+### Phase 7 — Report
+
+`templates/audit-report-template.md`. Fill `Not checked` and `Limitations`
+honestly; they are what make the report credible. Then stop — no remediation,
+no suggested audit cadence.
+
+## Multi-device runs
+
+Repeat Phases 1–6 per device, one evidence file each, aggregate at the end.
+
+- Never aggregate across an `unknown`: a fleet is not clean if one member was
+  unreachable or one check went unverified.
+- Same finding on many devices → one entry with the device list, plus whether
+  the cause is shared (same image, same template, same operator habit).
 
 ## Division of labor across networking skills
 
@@ -88,21 +131,52 @@ Use `templates/audit-report-template.md`: scope, inventory, reachability/complet
 | `network-device-cli` | how to SSH to devices directly (outside ntn) |
 | `network-troubleshooting` | outage diagnosis, OSI layers, hypothesis tests |
 | `network-change-management` | change approval, rollback generation |
-| `network-security-audit` (this) | security findings, CVE/baseline, audit report |
+| `network-security-audit` (this) | security findings, control catalog, CVE research, report |
 
-Complementary flow: the audit (this skill) finds → the user approves
-remediation → `network-change-management` plans it, gets approval, and
-applies it → `network-troubleshooting` verifies nothing broke.
+Complementary flow: the audit finds → the user approves remediation →
+`network-change-management` plans, gets approval, applies →
+`network-troubleshooting` verifies nothing broke.
 
 ## Pitfalls
 
-- **CVE findings require applicability evidence.** Match product/model/build, affected versions, and enabled features before assigning severity.
-- **Version ≠ patch level.** Verify release notes and fixed-version advisories; do not infer patch status from version numbering alone.
-- **The perimeter needs an outside vantage point.** Configuration shows intended policy, not measured reachability. Active external tests require explicit permission and documented scope.
-- **Unknown is not safe.** Mark unreachable or unverified checks unknown/not checked, not pass.
-- **Don't run an audit unrequested.** This is a user rule, not a preference.
-- **Audit ≠ outage diagnosis.** Use `network-troubleshooting` for availability/performance symptoms.
+- **CVE without applicability evidence.** Match product, model, build,
+  affected-version range, *and* the enabled feature before assigning severity.
+  Otherwise it is INFO with a stated reason.
+- **Version ≠ patch level.** Check the release's fixed-version advisories and
+  changelog; do not infer patch status from the number's shape.
+- **The perimeter needs an outside vantage point.** Config shows intended
+  policy. Measured reachability needs an active test, explicit permission, and
+  a note in the report that it was active.
+- **Rule order, not rule count.** A default-permit above the deny makes a
+  present-looking policy completely inert.
+- **Unreachable ≠ hardened.** Mark `unknown`.
+- **Don't run an audit unrequested.** A user rule, not a preference.
+- **Audit ≠ outage diagnosis.** Slowness and flapping are
+  `network-troubleshooting`.
+- **A rejected command is not a finding.** Verify syntax against official docs
+  before concluding the device lacks the control.
 
 ## Verification
 
-This is a guided, read-only workflow with no bundled parsers. Gather actual output, adapt to the device, and cite sources for externally verified claims. Audit runs are not recorded in the device inventory: the audit report is the record.
+There is no bundled parser, so verification is the evidence itself: real
+output, pasted verbatim, adapted to the actual platform, with sources for every
+external claim. The audit report is the record — audit runs are not written to
+the device inventory.
+
+What has actually been exercised:
+
+- The **removal** of the bundled parsers was verified by construction: the
+  scripts are gone, and no skill or README references them any more
+  (`grep -rn 'sec_audit\|cfg_audit\|triage'` over the repo returns only the
+  README lines that explicitly state no scripts are bundled).
+- The engine's `month_for` fix (timestamp → month without `date -d` parsing) is
+  unit-tested: `20261106-003835 → 2026-11`, `20260101-120000 → 2026-01`,
+  and a malformed value falls back to the current month without error.
+- The per-platform command blocks in the playbook are compiled from vendor
+  documentation and from the previously working battery; they have **not** yet
+  been re-run against the lab devices end to end in this revision, because the
+  lab VMs (`192.168.200.0/24`, vmnet8) were powered off at the time of writing.
+
+Treat the command tables as "confirmed syntax, pending a full live pass". When
+the lab is up, run Phases 1–4 on one RouterOS and one IOS device and promote
+this note to a dated verified list.
