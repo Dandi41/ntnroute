@@ -72,7 +72,7 @@ The installer:
 1. checks `jq` and `ssh`,
 2. installs the engine to `~/.ntnroute/ntn` (mode 700) and symlinks it as `~/.local/bin/ntn`,
 3. creates `~/.ntnroute/` with an empty inventory (mode 600),
-4. if you use [Hermes Agent](https://hermes-agent.nousresearch.com), copies the five skills into `~/.hermes/skills/networking/`.
+4. if you use [Hermes Agent](https://hermes-agent.nousresearch.com), syncs the five skills into `~/.hermes/skills/networking/` through a manifest (`.ntn_manifest`): repo-owned files are updated, files the repo dropped are removed, and anything the installer did not install — an agent-authored reference, a local edit — is preserved (a drifted repo file is kept beside the new one as `<file>.local-<ts>`). A pre-install snapshot of the skills tree lands in `~/.ntnroute/backups/` (last 5 kept). Flags: `--dry-run` shows the plan without touching anything, `--force` discards local edits to repo-owned files.
 
 ### Windows (native, no WSL)
 
