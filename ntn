@@ -92,7 +92,9 @@ month_for() {
   local s="$1"
   case "$s" in
     [0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9]) printf '%s-%s' "${s:0:4}" "${s:4:2}" ;;
-    *) date -d "$s" +%Y-%m 2>/dev/null || date +%Y-%m ;;
+    *) date -d "$s" +%Y-%m 2>/dev/null \
+         || date -j -f '%Y-%m-%d' "$s" +%Y-%m 2>/dev/null \
+         || date +%Y-%m ;;
   esac
 }
 backup_root_for() { printf '%s/%s' "$BACKUP_DIR" "$(safe_host "$1")"; }
@@ -152,7 +154,7 @@ retain_backups() {
         year=${month%%-*}
         case " $seenyears " in *" $year "*) rm -f "$dir/$pair.cfg" "$dir/$pair.rollback.cmd";; *) seenyears="$seenyears $year";; esac
       fi
-    done < <(find "$dir" -maxdepth 1 -type f -name '*.cfg' ! -name '*-sync.cfg' ! -name '*-added.cfg' -printf '%f\n' 2>/dev/null | sed 's/\.cfg$//' | sort -r)
+    done < <(find "$dir" -maxdepth 1 -type f -name '*.cfg' ! -name '*-sync.cfg' ! -name '*-added.cfg' -exec basename {} \; 2>/dev/null | sed 's/\.cfg$//' | sort -r)
     sidx=0
     while read -r f; do
       [ -n "$f" ] || continue
@@ -163,9 +165,9 @@ retain_backups() {
         syear=${month%%-*}
         case " $seensyears " in *" $syear "*) rm -f "$dir/$f";; *) seensyears="$seensyears $syear";; esac
       fi
-    done < <(find "$dir" -maxdepth 1 -type f \( -name '*-sync.cfg' -o -name '*-added.cfg' -o -name '*-rollback.cmd' \) -printf '%f\n' 2>/dev/null | sort -r)
+    done < <(find "$dir" -maxdepth 1 -type f \( -name '*-sync.cfg' -o -name '*-added.cfg' -o -name '*-rollback.cmd' \) -exec basename {} \; 2>/dev/null | sort -r)
     rmdir "$dir" 2>/dev/null || true
-  done < <(find "$root" -mindepth 1 -maxdepth 1 -type d -printf '%p/\n' 2>/dev/null | sort -r)
+  done < <(find "$root" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort -r)
   rmdir "$root" 2>/dev/null || true
 }
 archive_pair() {
@@ -201,8 +203,17 @@ resolve_number() { # display row number (1-based) OR id -> print id
 device_by_id() { jq --argjson id "$1" '.devices[] | select(.id==$id)' "$DB"; }
 
 # ---------- brand differences ----------
-norm_brand() { case "${1,,}" in cisco) echo Cisco;; huawei) echo Huawei;; aruba) echo Aruba;; arista) echo Arista;; ruijie) echo Ruijie;; juniper) echo Juniper;; fortinet|fortigate) echo Fortinet;; mikrotik) echo Mikrotik;; *) echo "${1^}";; esac; }
-norm_type()  { case "${1,,}" in router) echo Router;; switch) echo Switch;; olt) echo OLT;; firewall) echo Firewall;; ap|accesspoint|access-point) echo AP;; *) echo "${1^}";; esac; }
+# Portable case helpers. macOS ships bash 3.2, where ${x,,} / ${x^} are a
+# hard "bad substitution" — that killed `ntn add` on every Mac. tr works in 3.2.
+lc() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
+ucfirst() {
+  local _h _t
+  _h=$(printf '%s' "$1" | cut -c1 | tr '[:lower:]' '[:upper:]')
+  _t=$(printf '%s' "$1" | cut -c2-)
+  printf '%s%s' "$_h" "$_t"
+}
+norm_brand() { case "$(lc "$1")" in cisco) echo Cisco;; huawei) echo Huawei;; aruba) echo Aruba;; arista) echo Arista;; ruijie) echo Ruijie;; juniper) echo Juniper;; fortinet|fortigate) echo Fortinet;; mikrotik) echo Mikrotik;; *) ucfirst "$1";; esac; }
+norm_type()  { case "$(lc "$1")" in router) echo Router;; switch) echo Switch;; olt) echo OLT;; firewall) echo Firewall;; ap|accesspoint|access-point) echo AP;; *) ucfirst "$1";; esac; }
 
 is_exec_brand() { case "$1" in Mikrotik) return 0;; esac; [ "$(brand_get "$1" mode)" = "exec" ]; }
 is_execarg_brand() { [ "$(brand_get "$1" mode)" = "exec-arg" ]; }
@@ -223,9 +234,9 @@ run_exec_arg() { # ip port user pass command out timeout_s — one exec request,
 }
 
 # ---- brand profiles: brands.json overrides/extends the built-in tables ----
-brand_profile() { [ -f "$BRANDS_FILE" ] && jq -e --arg b "${1,,}" '(.[$b] | type == "object")' "$BRANDS_FILE" >/dev/null 2>&1; }
-brand_has()     { brand_profile "$1" && jq -e --arg b "${1,,}" --arg k "$2" '.[$b] | has($k)' "$BRANDS_FILE" >/dev/null 2>&1; }
-brand_get()     { jq -r --arg b "${1,,}" --arg k "$2" '(.[$b][$k] // "")' "$BRANDS_FILE" 2>/dev/null; }
+brand_profile() { [ -f "$BRANDS_FILE" ] && jq -e --arg b "$(lc "$1")" '(.[$b] | type == "object")' "$BRANDS_FILE" >/dev/null 2>&1; }
+brand_has()     { brand_profile "$1" && jq -e --arg b "$(lc "$1")" --arg k "$2" '.[$b] | has($k)' "$BRANDS_FILE" >/dev/null 2>&1; }
+brand_get()     { jq -r --arg b "$(lc "$1")" --arg k "$2" '(.[$b][$k] // "")' "$BRANDS_FILE" 2>/dev/null; }
 
 paging_cmd()   { if brand_has "$1" paging; then brand_get "$1" paging; return; fi; case "$1" in Huawei) echo "screen-length 0 temporary";; Aruba) echo "no page";; Juniper) echo "set cli screen-length 0";; Mikrotik|Fortinet) :;; *) echo "terminal length 0";; esac; }
 secret_cmd()   { if brand_has "$1" secret_cmd; then brand_get "$1" secret_cmd; return; fi; case "$1" in Huawei) echo super;; Fortinet) :;; *) echo enable;; esac; }
@@ -876,6 +887,10 @@ cmd_config() {
         rbfile="$archive.rollback.cmd"
         db_write '(.devices[] | select(.id==$id)).check_point = $rb' --argjson id "$id" --rawfile rb "$rbfile"
         echo "Backup archive: $archive.cfg + $archive.rollback.cmd"
+        # The rollback now lives inside the published pair. Drop the staging copy
+        # at the backups root, otherwise every change leaves an orphan duplicate
+        # that also eats a slot in the sync-snapshot retention quota.
+        rm -f "$BACKUP_DIR/$hostname-$ts-rollback.cmd" 2>/dev/null || true
       else
         # Fallback: keep the rollback beside the change archives, not loose.
         local fdir fb
