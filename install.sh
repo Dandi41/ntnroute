@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# NTnRoute.AI installer — engine + optional Hermes skills
+# NTnRoute.AI beta-v1.0.2 installer — SSH + optional web/MCP + Hermes skills
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -10,29 +10,14 @@ HERMES_SKILLS="${HERMES_SKILLS:-$HOME/.hermes/skills/networking}"
 err() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 ok()  { printf 'OK: %s\n' "$*"; }
 
-OS="$(uname -s)"
-case "$OS" in
-  MINGW*|MSYS*|CYGWIN*) WINDOWS=1 ;;
-  *)                    WINDOWS=0 ;;
-esac
+# Parse and validate before any filesystem writes or optional downloads.
+source "$REPO_DIR/install-web.sh"
+ntn_web_parse "$@"
+ntn_web_choose
 
 # --- dependencies -----------------------------------------------------------
-# Windows: jq is auto-provisioned into $NTN_HOME/bin (prepended to PATH by the
-# engine). bash/ssh/timeout all ship with Git for Windows — that is the only
-# prerequisite the user must install by hand.
-if ! command -v jq >/dev/null 2>&1; then
-  if [ "$WINDOWS" = 1 ] && command -v curl >/dev/null 2>&1; then
-    mkdir -p "$NTN_HOME/bin"
-    curl -L -sS -o "$NTN_HOME/bin/jq.exe" \
-      https://github.com/jqlang/jq/releases/latest/download/jq-windows-amd64.exe \
-      || err "failed to download jq — install it manually: https://jqlang.github.io/jq/download/"
-    chmod +x "$NTN_HOME/bin/jq.exe" 2>/dev/null || true
-    case ":$PATH:" in *":$NTN_HOME/bin:"*) ;; *) PATH="$NTN_HOME/bin:$PATH" ;; esac
-    ok "jq installed automatically: $NTN_HOME/bin/jq.exe"
-  else
-    err "missing dependency: jq (install it, then re-run)"
-  fi
-fi
+# Core dependencies must already be installed (including jq on Windows).
+# Optional Playwright downloads require an explicit bundled selection.
 for dep in jq ssh; do
   command -v "$dep" >/dev/null 2>&1 || err "missing dependency: $dep (install it, then re-run)"
 done
@@ -41,6 +26,9 @@ command -v timeout >/dev/null 2>&1 || command -v gtimeout >/dev/null 2>&1 \
 ok "dependencies found (bash, jq, ssh)"
 
 # --- engine ------------------------------------------------------------------
+if [ "$DRY_RUN" = 1 ]; then
+  echo "DRY-RUN: install SSH engine and default brands (existing brands preserved)"
+else
 mkdir -p "$NTN_HOME" "$BIN_DIR"
 install -m 700 "$REPO_DIR/ntn" "$NTN_HOME/ntn"
 if ! ln -sfn "$NTN_HOME/ntn" "$BIN_DIR/ntn" 2>/dev/null || [ ! -e "$BIN_DIR/ntn" ]; then
@@ -69,22 +57,16 @@ mkdir -p "$NTN_HOME/backups"
 chmod 700 "$NTN_HOME"
 ok "data dir ready: $NTN_HOME (devices.json mode 600)"
 
+fi # non-dry-run engine/data install
+
 # --- optional: Hermes skills --------------------------------------------------
 # Manifest-based sync. The installer owns only what it installed, tracked in
 # .ntn_manifest (path + sha256 at install time). Everything else in the
 # installed tree — an agent-authored reference, a curator write — is preserved,
 # never deleted. A repo-owned file that was edited locally: the repo version
 # wins and the local copy is kept as <file>.local-<ts> (--force discards it).
-SKILLS="ntnroute network-device-cli network-change-management network-troubleshooting network-security-audit"
+SKILLS="ntnroute network-device-cli network-device-webui network-change-management network-troubleshooting network-security-audit"
 MANIFEST="$HERMES_SKILLS/.ntn_manifest"
-DRY_RUN=0; FORCE=0
-for arg in "$@"; do
-  case "$arg" in
-    --dry-run) DRY_RUN=1 ;;
-    --force)   FORCE=1 ;;
-    *) err "unknown option: $arg (supported: --dry-run, --force)" ;;
-  esac
-done
 hash_file() {
   if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1
   elif command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | cut -d' ' -f1
@@ -99,7 +81,7 @@ else
 fi
 
 if [ -d "$HOME/.hermes" ]; then
-  mkdir -p "$HERMES_SKILLS"
+  if [ "$DRY_RUN" = 0 ]; then mkdir -p "$HERMES_SKILLS"; fi
   HAVE_MANIFEST=0
   if [ -f "$MANIFEST" ]; then HAVE_MANIFEST=1; fi
 
@@ -157,10 +139,12 @@ if [ -d "$HOME/.hermes" ]; then
   done
 
   # 3. Report what the installer does not own and therefore never touches.
-  ( cd "$HERMES_SKILLS" && find . -type f ! -name '.ntn_manifest*' ! -name '*.new' | sed 's|^\./||' ) \
-    | while IFS= read -r rel; do
-        [ -e "$REPO_DIR/skills/$rel" ] || echo "NOTE: preserved agent-authored file: $rel"
-      done
+  if [ -d "$HERMES_SKILLS" ]; then
+    ( cd "$HERMES_SKILLS" && find . -type f ! -name '.ntn_manifest*' ! -name '*.new' | sed 's|^\./||' ) \
+      | while IFS= read -r rel; do
+          [ -e "$REPO_DIR/skills/$rel" ] || echo "NOTE: preserved agent-authored file: $rel"
+        done
+  fi
 
   if [ "$DRY_RUN" = 1 ]; then
     echo "DRY-RUN: nothing written. Re-run without --dry-run to apply."
@@ -173,9 +157,11 @@ else
   echo "NOTE: ~/.hermes not found — skipped skill install (engine works standalone)."
 fi
 
+ntn_web_install
+
 echo
-"$BIN_DIR/ntn" list || true
+if [ "$DRY_RUN" = 0 ]; then "$BIN_DIR/ntn" list || true; fi
 echo
 echo "Add your first device:"
 echo "  ntn add <IP> <Port> <User> <Pass> <Type> <Brand> [Secret]"
-echo "  e.g. ntn add 10.0.0.5 22 admin S3cr3t! Router Cisco enablepass123"
+echo "  Supply credentials locally; never paste them into installer settings or logs."

@@ -1,0 +1,198 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "NTnRoute reviewed read-only browser profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "status",
+    "vendor",
+    "firmware",
+    "read_path",
+    "read_only_reviewed",
+    "fields",
+    "identity",
+    "capabilities",
+    "asset_requests"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+    },
+    "status": {
+      "enum": [
+        "candidate",
+        "reviewed"
+      ]
+    },
+    "vendor": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "firmware": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "read_path": {
+      "type": "string",
+      "pattern": "^/(?!/)(?!.*\\.\\.)[A-Za-z0-9_./#-]*$"
+    },
+    "read_only_reviewed": {
+      "type": "boolean"
+    },
+    "review_scope": {
+      "enum": [
+        "status",
+        "authentication-only"
+      ]
+    },
+    "asset_requests": {
+      "type": "array",
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": {
+        "allOf": [
+          {
+            "$ref": "#/$defs/request"
+          },
+          {
+            "properties": {
+              "method": {
+                "const": "GET"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "authentication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "username_selector",
+        "password_selector",
+        "submit_selector",
+        "success_selector",
+        "success_text",
+        "login_path",
+        "success_path",
+        "requests"
+      ],
+      "properties": {
+        "username_selector": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "password_selector": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "submit_selector": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "success_selector": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "success_text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "login_path": {
+          "type": "string",
+          "pattern": "^/(?!/)(?!.*\\.\\.)[A-Za-z0-9_./#-]*$"
+        },
+        "success_path": {
+          "type": "string",
+          "pattern": "^/(?!/)(?!.*\\.\\.)[A-Za-z0-9_./#-]*$"
+        },
+        "requests": {
+          "$ref": "#/$defs/requests"
+        }
+      }
+    },
+    "fields": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 32,
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9_]{0,40}$",
+        "not": {
+          "pattern": "[pP][aA][sS][sS]|[sS][eE][cC][rR][eE][tT]|[tT][oO][kK][eE][nN]|[cC][oO][oO][kK][iI][eE]|[kK][eE][yY]|[cC][rR][eE][dD][eE][nN][tT][iI][aA][lL]"
+        }
+      },
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      }
+    },
+    "identity": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "capabilities": {
+      "const": {
+        "onu.provision": "unsupported",
+        "wan.configure": "unsupported",
+        "vlan.configure": "unsupported"
+      }
+    }
+  },
+  "$defs": {
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "query",
+        "method",
+        "max_requests"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^/(?!/)(?!.*\\.\\.)[A-Za-z0-9_./-]*$"
+        },
+        "query": {
+          "type": "string",
+          "maxLength": 1024,
+          "pattern": "^(?:[A-Za-z0-9_.~!$&'()*+,;=:@/?-]|%[0-9A-Fa-f]{2})*$"
+        },
+        "method": {
+          "enum": [
+            "GET",
+            "POST"
+          ]
+        },
+        "max_requests": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16
+        }
+      }
+    },
+    "requests": {
+      "type": "array",
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/request"
+      }
+    }
+  },
+  "$comment": "validate_profile additionally enforces unique path/query/method tuples, identity field membership, and exact authentication-only field/path/marker binding. Empty authentication.requests is valid declaration data but cannot connect."
+}

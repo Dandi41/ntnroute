@@ -1,0 +1,20 @@
+{
+  "id": "webfig-candidate",
+  "status": "candidate",
+  "vendor": "MikroTik WebFig",
+  "firmware": "UNTESTED: candidate only; verify selectors/read path on authorized lab firmware",
+  "read_path": "/",
+  "asset_requests": [],
+  "read_only_reviewed": false,
+  "fields": {
+    "model": "#system-identity"
+  },
+  "identity": {
+    "model": "REPLACE_WITH_EXACT_LAB_IDENTITY"
+  },
+  "capabilities": {
+    "onu.provision": "unsupported",
+    "wan.configure": "unsupported",
+    "vlan.configure": "unsupported"
+  }
+}

@@ -11,3 +11,13 @@ mocks/
 out*.txt
 __pycache__/
 *.pyc
+
+# Web GUI private runtime; never publish session/approval material
+web-state/
+web-venv/
+web-settings.json
+browser-data/
+playwright-report/
+test-results/
+*.har
+storage-state*.json

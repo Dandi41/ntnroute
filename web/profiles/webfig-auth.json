@@ -1,0 +1,31 @@
+{
+  "id": "webfig-auth",
+  "status": "reviewed",
+  "vendor": "MikroTik WebFig",
+  "firmware": "Observed UI authentication only; firmware-specific configuration/status adapters unverified",
+  "review_scope": "authentication-only",
+  "read_path": "/webfig/",
+  "asset_requests": [],
+  "read_only_reviewed": true,
+  "authentication": {
+    "requests": [],
+    "login_path": "/",
+    "username_selector": "#name",
+    "password_selector": "#password",
+    "submit_selector": "a[onclick=\"dologin()\"]",
+    "success_path": "/webfig/",
+    "success_selector": "a[href=\"#Queues\"]",
+    "success_text": "Queues"
+  },
+  "fields": {
+    "status": "a[href=\"#Queues\"]"
+  },
+  "identity": {
+    "status": "Queues"
+  },
+  "capabilities": {
+    "onu.provision": "unsupported",
+    "wan.configure": "unsupported",
+    "vlan.configure": "unsupported"
+  }
+}

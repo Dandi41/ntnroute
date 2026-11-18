@@ -11,6 +11,34 @@
 set -o pipefail
 
 NTN_HOME="${NTN_HOME:-$HOME/.ntnroute}"
+# The optional independent browser backend must dispatch before SSH dependency
+# checks and the inventory lock: it owns its own transactional state/locking.
+if [ "${1:-}" = "web" ]; then
+  shift
+  NTN_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  if [ -f "$NTN_SCRIPT_DIR/web/__main__.py" ]; then
+    NTN_WEB_ROOT="$NTN_SCRIPT_DIR"
+  elif [ -f "$NTN_HOME/web/__main__.py" ]; then
+    NTN_WEB_ROOT="$NTN_HOME"
+  else
+    printf '%s\n' 'ERROR: Web GUI backend is not installed; run installer with a Web GUI backend choice.' >&2
+    exit 1
+  fi
+  NTN_PYTHON="$NTN_HOME/web-venv/bin/python"
+  if [ ! -x "$NTN_PYTHON" ]; then
+    NTN_PYTHON="$NTN_HOME/web-venv/Scripts/python.exe"
+  fi
+  if [ ! -x "$NTN_PYTHON" ]; then
+    NTN_PYTHON="$(command -v python3 || true)"
+  fi
+  if [ -z "$NTN_PYTHON" ]; then
+    printf '%s\n' 'ERROR: Web GUI backend requires Python 3.10 or newer.' >&2
+    exit 1
+  fi
+  export NTN_HOME
+  export PYTHONPATH="$NTN_WEB_ROOT${PYTHONPATH:+:$PYTHONPATH}"
+  exec "$NTN_PYTHON" -m web "$@"
+fi
 # self-provisioned binaries (jq.exe installed by install.sh on Windows)
 case ":$PATH:" in
   *":$NTN_HOME/bin:"*) ;;

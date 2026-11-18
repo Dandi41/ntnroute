@@ -1,0 +1,31 @@
+{
+  "id": "cdata-auth",
+  "status": "reviewed",
+  "vendor": "CData",
+  "firmware": "Observed UI authentication only; firmware-specific configuration/status adapters unverified",
+  "review_scope": "authentication-only",
+  "read_path": "/#/",
+  "asset_requests": [],
+  "read_only_reviewed": true,
+  "authentication": {
+    "requests": [],
+    "login_path": "/#/login",
+    "username_selector": "input[type=\"text\"]",
+    "password_selector": "input[type=\"password\"]",
+    "submit_selector": "button:has-text(\"login\")",
+    "success_path": "/#/",
+    "success_selector": "text=\"Overview\"",
+    "success_text": "Overview"
+  },
+  "fields": {
+    "status": "text=\"Overview\""
+  },
+  "identity": {
+    "status": "Overview"
+  },
+  "capabilities": {
+    "onu.provision": "unsupported",
+    "wan.configure": "unsupported",
+    "vlan.configure": "unsupported"
+  }
+}
