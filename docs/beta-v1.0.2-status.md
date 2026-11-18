@@ -24,7 +24,7 @@ git diff --check
 
 Latest system-Python run: 19 installer/dispatch tests and 46 core/provider tests passed, including JSON Schema validation. The real-browser fixture class was skipped because Playwright is not installed in system Python. Syntax and whitespace checks passed. These are mocked/unit results, not firmware certification. An independent review found no outstanding defect in the four targeted security/settings fixes.
 
-System Python lacks ensurepip. An isolated pip-free venv was created under the scratch directory and populated using system pip's --python option; Playwright installed successfully without changing system packages. Chromium download is still pending; real-browser login fixtures remain unexecuted.
+System Python lacks ensurepip. An isolated pip-free venv was created under the scratch directory and populated using system pip's --python option; Playwright and Chromium installed successfully without changing system packages. The isolated run executed 53 core/provider/browser tests: 52 passed and only optional JSON Schema validation was skipped (it passed in the system-Python run). All seven real Chromium loopback fixture tests passed, covering login markers, bounded metadata, credential echo rejection, off-origin containment and undeclared same-origin requests. These fixtures simulate device interfaces; they do not certify real WebFig/CData firmware.
 
 ## Not supported / release blockers
 
