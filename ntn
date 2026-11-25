@@ -196,8 +196,30 @@ audit_settle() {
             | if $e == null then . else .audit[$e.key].action = ($e.value.action | sub("pending$"; "started")) end'
 }
 
-resolve_ref() { # ref = display-number | id | ip | hostname -> print id
-  jq -r --arg ref "$1" '[.devices[] | select((.id|tostring)==$ref or .ip==$ref or ((.hostname|ascii_downcase)==($ref|ascii_downcase)))] | .[0].id // empty' "$DB"
+# ref = display-number | id | ip | ip:port | hostname -> print id.
+# "ip:port" (with a colon) matches exactly one ip:port pair — always precise.
+# A bare IP is only accepted while it is unique in the inventory; with several
+# devices behind one NAT IP (different forwarded ports) the caller must
+# disambiguate via ip:port, hostname, or id.
+resolve_ref() {
+  local ref=$1 matches
+  if [[ $ref == *:* ]]; then
+    matches=$(jq -r --arg ip "${ref%%:*}" --arg port "${ref##*:}" \
+      '[.devices[] | select(.ip==$ip and (.port|tostring)==$port) | .id] | .[]' "$DB")
+  else
+    matches=$(jq -r --arg ref "$ref" \
+      '[.devices[] |
+        select((.id|tostring)==$ref
+            or .ip==$ref
+            or ((.hostname|ascii_downcase)==($ref|ascii_downcase))) | .id] | .[]' "$DB")
+  fi
+  local n; n=$(printf '%s' "$matches" | grep -c . || true)
+  case $n in
+    1) printf '%s\n' "$matches" ;;
+    0) : ;;
+    *) echo "ERROR: reference '$ref' matches $n devices. Use ip:port, hostname, or id instead." >&2
+       return 1 ;;
+  esac
 }
 
 resolve_number() { # display row number (1-based) OR id -> print id
@@ -478,7 +500,7 @@ cmd_list() {
 
 cmd_show() {
   [ $# -eq 1 ] || die "usage: ntn show <ref>"
-  local id; id=$(resolve_ref "$1"); [ -n "$id" ] || die "device not found: $1"
+  local id; id=$(resolve_ref "$1") || exit 1; [ -n "$id" ] || die "device not found: $1"
   device_by_id "$id" | jq -r '
     "hostname   : " + .hostname,
     "id         : " + (.id|tostring),
@@ -500,8 +522,10 @@ cmd_add() {
   case "$brand" in Cisco|Huawei|Aruba|Arista|Ruijie|Juniper|Mikrotik|Fortinet) ;; *)
     brand_profile "$brand" || echo "NOTE: brand '$brand' is not built-in — generic Cisco-like defaults apply; add a profile in $BRANDS_FILE to customize." ;;
   esac
-  local dup; dup=$(jq -r --arg ip "$ip" '.devices[] | select(.ip==$ip) | .id' "$DB")
-  [ -z "$dup" ] || die "IP $ip already registered (id $dup). Remove it first: ntn remove <number>"
+  # Identity is ip:port — two devices behind one NAT IP on different forwarded
+  # ports are distinct devices. Only the exact ip:port pair is a duplicate.
+  local dup; dup=$(jq -r --arg ip "$ip" --argjson port "$port" '.devices[] | select(.ip==$ip and .port==$port) | .id' "$DB")
+  [ -z "$dup" ] || die "IP $ip port $port already registered (id $dup). Remove it first: ntn remove <number>"
 
   echo "Testing SSH connection to $ip:$port (user $user, $brand $type) ..."
   local cfgfile probe rc
@@ -550,10 +574,11 @@ cmd_add() {
 cmd_remove() {
   [ $# -ge 1 ] || die "usage: ntn remove <number|id>  (see list: ntn list)"
   local id; id=$(resolve_number "$1"); [ -n "$id" ] || die "no device with number/id $1"
-  local hostname ip label safe
+  local hostname ip port label safe
   hostname=$(device_by_id "$id" | jq -r '.hostname')
   ip=$(device_by_id "$id" | jq -r '.ip')
-  label="$hostname ($ip)"
+  port=$(device_by_id "$id" | jq -r '.port')
+  label="$hostname ($ip:$port)"
   safe=$(safe_host "$hostname")
 
   # A removal is a full erasure after the agent has obtained explicit chat
@@ -562,16 +587,26 @@ cmd_remove() {
   rm -rf "$BACKUP_DIR/$safe"
   rm -f "$BACKUP_DIR/$safe"-*.cfg "$BACKUP_DIR/$safe"-*-rollback.cmd
 
+  # Audit rows are keyed by hostname, not IP: with several devices behind one
+  # NAT IP, filtering on IP would erase the other devices' change history too.
   db_write '.devices = [(.devices // [])[] | select(.id != $id)]
             | .checkpoints = [(.checkpoints // [])[] | select(.hostname != $h)]
-            | .audit = [(.audit // [])[] | select((.detail | contains($h) | not) and (.detail | contains($ip) | not))]' --argjson id "$id" --arg h "$hostname" --arg ip "$ip"
+            | ([.devices[] | select(.ip == $ip)] | length) as $sib
+            | .audit = [(.audit // [])[]
+                        | select((.detail == $h + " (" + $ip + ":" + ($port|tostring) + ")") | not)
+                        | select((.detail | startswith($h + " (" + $ip + ":" + ($port|tostring) + ")")) | not)
+                        | select((.detail | startswith($h + ": ")) | not)
+                        | select(if $sib > 0 then true
+                                 else ((.detail == $h) | not)
+                                      and ((.detail | contains($ip)) | not)
+                                 end)]' --argjson id "$id" --arg h "$hostname" --arg ip "$ip" --argjson port "$port"
   echo "OK: device and all related records removed → $label"
 }
 
 # ---------- commands: ping / exec / sync ----------
 cmd_ping() {
   [ $# -ge 1 ] || die "usage: ntn ping <ref>"
-  local id; id=$(resolve_ref "$1"); [ -n "$id" ] || die "device not found: $1"
+  local id; id=$(resolve_ref "$1") || exit 1; [ -n "$id" ] || die "device not found: $1"
   local ip; ip=$(device_by_id "$id" | jq -r '.ip')
   case "$(uname -s)" in
     MINGW*|MSYS*|CYGWIN*) ping -n 3 -w 2000 "$ip" 2>&1 | tail -2 ;;
@@ -605,7 +640,7 @@ run_device_commands() { # ip port user pass secret brand out_file timeout cmd...
 
 cmd_exec() {
   [ $# -ge 2 ] || die "usage: ntn exec <ref> <cmd> [cmd2 ...]"
-  local id; id=$(resolve_ref "$1"); [ -n "$id" ] || die "device not found: $1"
+  local id; id=$(resolve_ref "$1") || exit 1; [ -n "$id" ] || die "device not found: $1"
   shift
   local dev ip port user pass secret brand hostname out rc
   dev=$(device_by_id "$id")
@@ -654,10 +689,10 @@ sync_one() { # id
   pull_config "$ip" "$port" "$user" "$pass" "$secret" "$brand" "$cfgfile"
   rc=$?
   if [ $rc -ne 0 ] || auth_failed "$cfgfile"; then
-    rm -f "$cfgfile"; echo "FAILED sync $hostname ($ip): connection/auth"; return 1
+    rm -f "$cfgfile"; echo "FAILED sync $hostname ($ip:$port): connection/auth"; return 1
   fi
   if [ ! -s "$cfgfile" ]; then rm -f "$cfgfile"; echo "FAILED sync $hostname: empty config output"; return 1; fi
-  if ! require_real_config "$brand" "$cfgfile" "sync $hostname ($ip)"; then rm -f "$cfgfile"; return 1; fi
+  if ! require_real_config "$brand" "$cfgfile" "sync $hostname ($ip:$port)"; then rm -f "$cfgfile"; return 1; fi
   local stamp dir; stamp=$(date +%Y%m%d-%H%M%S)
   dir=$(backup_month_for "$hostname" "$stamp"); mkdir -p "$dir"; chmod 700 "$dir"
   cp "$cfgfile" "$dir/$stamp-sync.cfg"; chmod 600 "$dir/$stamp-sync.cfg"
@@ -666,7 +701,7 @@ sync_one() { # id
            --argjson id "$id" --rawfile cfg "$cfgfile"
   rm -f "$cfgfile"
   retain_backups "$hostname"
-  echo "OK sync $hostname ($ip)"
+  echo "OK sync $hostname ($ip:$port)"
 }
 
 cmd_sync() {
@@ -679,7 +714,7 @@ cmd_sync() {
     echo "Done: $ok succeeded, $fail failed"
     [ "$fail" -eq 0 ] || return 1
   else
-    local id; id=$(resolve_ref "$1"); [ -n "$id" ] || die "device not found: $1"
+    local id; id=$(resolve_ref "$1") || exit 1; [ -n "$id" ] || die "device not found: $1"
     sync_one "$id"
   fi
 }
@@ -796,13 +831,13 @@ apply_config() { # id script_file reason -> 0 on success
   fi
 
   if auth_failed "$out"; then
-    rm -f "$out"; audit "config-failed" "$hostname ($ip): session dropped / auth failed"; PENDING_AUDIT=""; audit_settle
+    rm -f "$out"; audit "config-failed" "$hostname ($ip:$port): session dropped / auth failed"; PENDING_AUDIT=""; audit_settle
     die "session dropped or auth failed during apply. Check the device manually; pre-change config saved at $precfg"
   fi
   # exit != 0 in RouterOS exec-mode means a command was rejected (syntax/invalid value),
   # not a dropped session — fall through to error detection below so the message is accurate.
   if [ $rc -ne 0 ] && ! is_exec_brand "$brand"; then
-    rm -f "$out"; audit "config-failed" "$hostname ($ip): session dropped during apply (exit $rc)"; PENDING_AUDIT=""; audit_settle
+    rm -f "$out"; audit "config-failed" "$hostname ($ip:$port): session dropped during apply (exit $rc)"; PENDING_AUDIT=""; audit_settle
     die "session dropped during apply (exit $rc). Check the device manually; pre-change config saved at $precfg"
   fi
   local errors
@@ -824,7 +859,7 @@ apply_config() { # id script_file reason -> 0 on success
   echo "--- execution result ---"
   if [ -n "$errors" ]; then
     echo "Device errors:"; echo "$errors"
-    audit "config-failed" "$hostname ($ip): $reason"; PENDING_AUDIT=""; audit_settle
+    audit "config-failed" "$hostname ($ip:$port): $reason"; PENDING_AUDIT=""; audit_settle
     rm -f "$precfg" "$newcfg"; TRANSACTION_PRE=""; TRANSACTION_FINAL=""
     echo "STATUS: FAILED — device rejected one or more commands"
     return 1
@@ -854,7 +889,7 @@ cmd_config() {
   done
   [ -n "$ref" ] && [ -n "$script" ] || die "usage: ntn config <ref> --script <file> [--rollback <file>] [--reason <text>]"
   [ -n "$reason" ] || reason="(no reason given)"
-  local id; id=$(resolve_ref "$ref"); [ -n "$id" ] || die "device not found: $ref"
+  local id; id=$(resolve_ref "$ref") || exit 1; [ -n "$id" ] || die "device not found: $ref"
   local hostname ip; hostname=$(device_by_id "$id" | jq -r '.hostname'); ip=$(device_by_id "$id" | jq -r '.ip')
   local cfgbrand; cfgbrand=$(device_by_id "$id" | jq -r '.brand')
   if [ "$(brand_get "$cfgbrand" config_supported)" = "false" ]; then
@@ -870,7 +905,7 @@ cmd_config() {
     : > "$rbfile"
   fi
 
-  PENDING_AUDIT="$hostname ($ip): $reason — script: $script ($(grep -cve '^\s*$' -e '^!' "$script" 2>/dev/null || echo 0) lines)"
+  PENDING_AUDIT="$hostname ($ip:$port): $reason — script: $script ($(grep -cve '^\s*$' -e '^!' "$script" 2>/dev/null || echo 0) lines)"
   audit "config-pending" "$PENDING_AUDIT"
 
   if apply_config "$id" "$script" "$reason"; then
@@ -899,9 +934,9 @@ cmd_config() {
         db_write '(.devices[] | select(.id==$id)).check_point = $rb' --argjson id "$id" --rawfile rb "$rbfile"
         echo "Rollback retained: $rbfile"
       fi
-      audit "config-ok" "$hostname ($ip): $reason"; PENDING_AUDIT=""; audit_settle
+      audit "config-ok" "$hostname ($ip:$port): $reason"; PENDING_AUDIT=""; audit_settle
     else
-      audit "config-ok" "$hostname ($ip): $reason (no rollback archive)"; PENDING_AUDIT=""; audit_settle
+      audit "config-ok" "$hostname ($ip:$port): $reason (no rollback archive)"; PENDING_AUDIT=""; audit_settle
       echo "WARNING: no rollback script was provided"
     fi
     rm -f "$TRANSACTION_PRE" "$TRANSACTION_FINAL"; TRANSACTION_PRE=""; TRANSACTION_FINAL=""
@@ -915,23 +950,25 @@ cmd_config() {
 
 cmd_rollback() {
   [ $# -ge 1 ] || die "usage: ntn rollback <ref>"
-  local id; id=$(resolve_ref "$1"); [ -n "$id" ] || die "device not found: $1"
-  local rb hostname
+  local id; id=$(resolve_ref "$1") || exit 1; [ -n "$id" ] || die "device not found: $1"
+  local rb hostname ip port
   rb=$(device_by_id "$id" | jq -r '.check_point')
   hostname=$(device_by_id "$id" | jq -r '.hostname')
+  ip=$(device_by_id "$id" | jq -r '.ip')
+  port=$(device_by_id "$id" | jq -r '.port')
   [ -n "$rb" ] || die "check_point empty for $hostname — nothing to roll back"
   local rbtmp; rbtmp=$(tmpfile ntn.rb.XXXXXX)
   printf '%s\n' "$rb" > "$rbtmp"
   echo "Running rollback for $hostname ..."
-  PENDING_AUDIT="$hostname (rollback): restoring check_point script ($(grep -cve '^\s*$' "$rbtmp" 2>/dev/null || echo 0) lines)"
+  PENDING_AUDIT="$hostname ($ip:$port) (rollback): restoring check_point script ($(grep -cve '^\s*$' "$rbtmp" 2>/dev/null || echo 0) lines)"
   audit "rollback-pending" "$PENDING_AUDIT"
   if apply_config "$id" "$rbtmp" "ROLLBACK"; then
     db_write '(.devices[] | select(.id==$id)).check_point = ""' --argjson id "$id"
-    audit "rollback" "$hostname"; PENDING_AUDIT=""; audit_settle
+    audit "rollback" "$hostname ($ip:$port)"; PENDING_AUDIT=""; audit_settle
     echo "STATUS: ROLLBACK SUCCESS — check_point cleared"
   else
     rm -f "$rbtmp"
-    audit "rollback-failed" "$hostname: rollback apply failed — check manually; snapshots are in $BACKUP_DIR"
+    audit "rollback-failed" "$hostname ($ip:$port): rollback apply failed — check manually; snapshots are in $BACKUP_DIR"
     PENDING_AUDIT=""; audit_settle
     die "rollback failed — check manually; snapshots are in $BACKUP_DIR"
   fi
@@ -940,7 +977,7 @@ cmd_rollback() {
 
 cmd_checkpoints() {
   [ $# -ge 1 ] || die "usage: ntn checkpoints <ref>"
-  local id; id=$(resolve_ref "$1"); [ -n "$id" ] || die "device not found: $1"
+  local id; id=$(resolve_ref "$1") || exit 1; [ -n "$id" ] || die "device not found: $1"
   local hostname; hostname=$(device_by_id "$id" | jq -r '.hostname')
   local n; n=$(jq --arg h "$hostname" '[(.checkpoints // [])[] | select(.hostname==$h)] | length' "$DB")
   echo "Checkpoint history for $hostname ($n entries, newest last):"

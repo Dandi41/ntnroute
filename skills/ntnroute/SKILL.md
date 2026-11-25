@@ -71,6 +71,33 @@ and all of its stored data (configuration backups, rollback files, checkpoints,
 audit history)?”** Only a clear yes authorizes the
 removal. A removal is total: it does not leave historical artifacts behind.
 
+### Inventory identity — `ip:port`
+
+Identity is the pair `ip:port`. Two devices behind one NAT/public IP that are
+reachable on different forwarded ports are two inventory entries; `add` refuses
+only the exact pair: `ERROR: IP <x> port <p> already registered (id N). Remove it
+first: ntn remove <number>`.
+
+Reference rules (`<ref>` for show/sync/exec/config/rollback):
+- `ip:port` — always precise; use it whenever several devices share an IP.
+- hostname (case-insensitive), id, or list number — precise while hostnames are unique.
+- bare `ip` — accepted only while exactly one device carries that IP. With 2+ it is
+  refused: `ERROR: reference '<x>' matches 2 devices. Use ip:port, hostname, or id
+  instead.` The engine never resolves an ambiguous reference to the first match;
+  a wrong-device exec/config is a live-network fault. Never "free" an IP by removing
+  the other entry — that destroys its `config_list`, backups, `check_point` and
+  audit history.
+
+Same-IP side effects that remain the operator's responsibility:
+- backup trees are keyed by `safe_host(hostname)`, and the hostname fallback is the
+  IP. If the hostname pull fails for both devices they land in the same
+  `backups/<ip>/` tree and share checkpoint rows — keep hostnames unique on the
+  devices themselves.
+- audit/removal scoping matches the detail shapes `<hostname> (<ip>:<port>)`,
+  `<hostname>: `, and bare `<hostname>`; legacy rows that carry only the IP are
+  dropped on removal **only** when no sibling device keeps that IP.
+- `ping` targets the host IP, so it cannot distinguish two devices behind it.
+
 ### Troubleshooting
 1. `ntn list` / `ntn show <ref>` for context.
 2. Read the live condition: run the device's `show` commands through the engine's exec operation (invocation: `references/engine-commands.md`).
